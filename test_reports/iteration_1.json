@@ -1,0 +1,50 @@
+{
+  "summary": "First testing run after initial implementation. Backend: 26/26 pytest tests pass after fixing a 500 in POST /api/users (missing _id pop). Auth (check-email, setup-password, login, me, change-password), Users (CRUD + admin-only enforcement + cannot delete main admin), CRUD on customers/products/materials/orders/invoices/calendar, POS sales (auto-compute subtotal/total), dashboard stats, reports overview, and permission enforcement (collaborator 403/200 matrix) all verified. Frontend: login flow, dashboard, all 10 sidebar links navigate, modules render, order creation through UI works, logout clears token. A few non-blocking React warnings.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/users", "issue": "Returned 500 with 'ObjectId is not iterable' because the inserted doc still contained _id when serialised. FIXED by adding doc.pop('_id', None) before return in server.py create_user."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Dashboard", "issue": "[data-testid=stat-revenue-today] not visible after login (other 3 stat cards visible). May be conditionally hidden when revenue_today==0; spec says 4 cards should always render.", "selector": "[data-testid='stat-revenue-today']", "priority": "MEDIUM"},
+      {"component": "LoginPage", "issue": "Console error: 'Cannot update a component (BrowserRouter) while rendering a different component (LoginPage)'. setState during render — likely a <Navigate /> inside the render path. Should move to useEffect.", "selector": "src/pages/Login.jsx", "priority": "MEDIUM"},
+      {"component": "Reports charts", "issue": "Recharts warnings: 'width(-1) and height(-1) of chart should be greater than 0'. ResponsiveContainer parent lacks size on first render; charts still appear after layout settles.", "selector": "src/pages/Reports.jsx", "priority": "LOW"},
+      {"component": "Modal / DialogContent", "issue": "A11y warning: 'Missing Description or aria-describedby={undefined} for DialogContent' for order/user create modals.", "selector": "Radix Dialog usages", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Login", "issues": ["Both 'Verifica email' and 'Entra' buttons + password field shown together by default. Spec asked for two-step flow (enter email → click Verifica → form shifts to password OR setup). Current single-form layout still works but does not strictly match the described UX."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Investigate why stat-revenue-today card is not visible on dashboard load (conditional render or CSS) — guarantee all 4 stat cards are always rendered.",
+    "Fix React setState-during-render warning in src/pages/Login.jsx (use useEffect / replace conditional <Navigate />).",
+    "Ensure parent of ResponsiveContainer in Reports.jsx has explicit height (e.g. h-72) to avoid initial -1/-1 chart sizing warnings.",
+    "Add aria-describedby (or <DialogDescription>) to Radix DialogContent in create/edit modals.",
+    "Consider implementing real two-step login UX (hide password field until Verifica email returns the user state) as described in spec."
+  ],
+  "critical_code_review_comments": [
+    "create_user in server.py was missing doc.pop('_id', None) — same pattern elsewhere uses clean_doc/explicit pop. Consider centralising via clean_doc to avoid recurrence.",
+    "make_crud factory: PATCH endpoint accepts arbitrary dict without Pydantic validation — could allow setting unknown fields on documents. Consider partial Pydantic models per resource.",
+    "Token TTL of 7 days hardcoded (JWT_TTL_HOURS = 24*7) — fine for MVP but should be env-configurable.",
+    "CORS allow_origins defaults to '*' with allow_credentials=True — browsers reject this combination; works because origin is currently echoed but should be explicit list in production.",
+    "Dashboard polls every 3s (per spec) — heavy when many tabs open; consider websockets or smarter invalidation later."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (fixed POST /api/users 500 by popping _id)",
+    "/app/backend/tests/backend_test.py (new pytest suite, 26 tests)"
+  ],
+  "success_rate": {"backend": "100% (26/26)", "frontend": "~90% (all navigation + CRUD UI flows OK; 1 stat card missing, console warnings)"},
+  "test_credentials": "Admin: lacrafterianerd@gmail.com / TestPass123! (password is now set; to reset to first-login state run mongosh lacrafterianerd_gestionale --eval 'db.users.updateOne({email:\"lacrafterianerd@gmail.com\"},{$set:{requires_password_setup:true,password_hash:null}})').",
+  "seed_data_creation": "All TEST_-prefixed users/customers/orders created by tests were cleaned up (pytest fixtures + manual mongosh wipe). DB state: 1 admin user, 1 leftover order from the UI test ('TEST UI ordine' was deleted in cleanup script).",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend fully covered by /app/backend/tests/backend_test.py — re-run after any backend changes. The admin password may still be TestPass123!; if check-email reports requires_password_setup=false, just login with that password. Frontend Login uses single form (Verifica email + Entra both visible) — adapt scripts accordingly. Watch for the stat-revenue-today card and the setState-in-render warning after main agent fixes.",
+  "rca of the issue": "POST /api/users 500: motor's insert_one mutates the passed dict by attaching the inserted _id (ObjectId). The handler popped password_hash but not _id, so FastAPI's JSON encoder hit ObjectId and raised TypeError -> 500. Reproduction: as admin POST /api/users with valid body. Mitigation: pop '_id' before returning (applied) or fetch document back via find_one with projection {_id:0}."
+}

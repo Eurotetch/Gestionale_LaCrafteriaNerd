@@ -2,91 +2,124 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-    margin: 0;
-    font-family:
-        -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
-        "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
-        sans-serif;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-}
+/* ==========================================================================
+   La Crafteria Nerd — Gestionale
+   Kawaii Craft / Pastel & Soft theme
+   ========================================================================== */
 
-code {
-    font-family:
-        source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
-}
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Poppins:wght@300;400;500;600;700&display=swap');
 
 @layer base {
     :root {
-        --background: 0 0% 100%;
-        --foreground: 0 0% 3.9%;
+        /* Brand-driven palette (warm cream + sunny yellow + pink + green + blue) */
+        --background: 45 90% 98%;           /* #FFFDF7 cream */
+        --foreground: 25 18% 25%;            /* #4A3F35 warm brown */
         --card: 0 0% 100%;
-        --card-foreground: 0 0% 3.9%;
+        --card-foreground: 25 18% 25%;
         --popover: 0 0% 100%;
-        --popover-foreground: 0 0% 3.9%;
-        --primary: 0 0% 9%;
-        --primary-foreground: 0 0% 98%;
-        --secondary: 0 0% 96.1%;
-        --secondary-foreground: 0 0% 9%;
-        --muted: 0 0% 96.1%;
-        --muted-foreground: 0 0% 45.1%;
-        --accent: 0 0% 96.1%;
-        --accent-foreground: 0 0% 9%;
-        --destructive: 0 84.2% 60.2%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 89.8%;
-        --input: 0 0% 89.8%;
-        --ring: 0 0% 3.9%;
-        --chart-1: 12 76% 61%;
-        --chart-2: 173 58% 39%;
-        --chart-3: 197 37% 24%;
-        --chart-4: 43 74% 66%;
-        --chart-5: 27 87% 67%;
-        --radius: 0.5rem;
+        --popover-foreground: 25 18% 25%;
+        --primary: 42 100% 70%;              /* #FFD166 sunny yellow */
+        --primary-foreground: 25 25% 18%;
+        --secondary: 350 80% 78%;            /* #F38D9B soft pink */
+        --secondary-foreground: 0 0% 100%;
+        --muted: 40 30% 94%;                 /* #F4F1EA */
+        --muted-foreground: 30 14% 49%;      /* #8C7C6B */
+        --accent: 162 92% 42%;               /* #06D6A0 fresh green */
+        --accent-foreground: 0 0% 100%;
+        --destructive: 348 84% 61%;          /* #EF476F */
+        --destructive-foreground: 0 0% 100%;
+        --border: 40 35% 86%;                /* #E8E2D2 */
+        --input: 40 35% 86%;
+        --ring: 42 100% 65%;
+        --chart-1: 42 100% 65%;              /* yellow */
+        --chart-2: 350 80% 70%;              /* pink */
+        --chart-3: 162 80% 42%;              /* green */
+        --chart-4: 199 84% 39%;              /* blue */
+        --chart-5: 28 92% 60%;               /* orange */
+        --radius: 1rem;
+
+        --crafteria-blue: 199 84% 39%;       /* #118AB2 */
+        --crafteria-cream: 48 80% 96%;
     }
+
     .dark {
-        --background: 0 0% 3.9%;
-        --foreground: 0 0% 98%;
-        --card: 0 0% 3.9%;
-        --card-foreground: 0 0% 98%;
-        --popover: 0 0% 3.9%;
-        --popover-foreground: 0 0% 98%;
-        --primary: 0 0% 98%;
-        --primary-foreground: 0 0% 9%;
-        --secondary: 0 0% 14.9%;
-        --secondary-foreground: 0 0% 98%;
-        --muted: 0 0% 14.9%;
-        --muted-foreground: 0 0% 63.9%;
-        --accent: 0 0% 14.9%;
-        --accent-foreground: 0 0% 98%;
-        --destructive: 0 62.8% 30.6%;
-        --destructive-foreground: 0 0% 98%;
-        --border: 0 0% 14.9%;
-        --input: 0 0% 14.9%;
-        --ring: 0 0% 83.1%;
-        --chart-1: 220 70% 50%;
-        --chart-2: 160 60% 45%;
-        --chart-3: 30 80% 55%;
-        --chart-4: 280 65% 60%;
-        --chart-5: 340 75% 55%;
+        /* warm dark mode — soft, not pitch black */
+        --background: 25 18% 12%;
+        --foreground: 45 70% 96%;
+        --card: 25 16% 16%;
+        --card-foreground: 45 70% 96%;
+        --popover: 25 16% 16%;
+        --popover-foreground: 45 70% 96%;
+        --primary: 42 100% 70%;
+        --primary-foreground: 25 25% 14%;
+        --secondary: 350 70% 64%;
+        --secondary-foreground: 0 0% 100%;
+        --muted: 25 14% 22%;
+        --muted-foreground: 40 20% 70%;
+        --accent: 162 80% 42%;
+        --accent-foreground: 0 0% 100%;
+        --destructive: 348 84% 61%;
+        --destructive-foreground: 0 0% 100%;
+        --border: 25 14% 26%;
+        --input: 25 14% 26%;
+        --ring: 42 100% 70%;
     }
 }
 
 @layer base {
-    * {
-        @apply border-border;
-    }
+    * { @apply border-border; }
+    html, body, #root { height: 100%; }
     body {
-        @apply bg-background text-foreground;
+        @apply bg-background text-foreground antialiased;
+        font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+        font-feature-settings: "ss01", "ss02";
     }
+    h1, h2, h3, h4, h5 {
+        font-family: 'Nunito', 'Poppins', sans-serif;
+        font-weight: 800;
+        letter-spacing: -0.015em;
+        color: hsl(var(--foreground));
+    }
+    ::selection {
+        background: hsl(var(--primary) / 0.4);
+        color: hsl(var(--primary-foreground));
+    }
+}
+
+@layer components {
+    .crafteria-shadow {
+        box-shadow: 0 10px 30px -10px rgba(74, 63, 53, 0.10), 0 2px 6px -2px rgba(74, 63, 53, 0.06);
+    }
+    .crafteria-card {
+        @apply bg-card rounded-3xl crafteria-shadow border border-border/60;
+    }
+    .crafteria-input {
+        @apply rounded-xl bg-muted/60 border border-transparent px-4 py-2.5 outline-none
+               focus:border-primary focus:ring-4 focus:ring-primary/20 transition-all;
+    }
+    .crafteria-btn-primary {
+        @apply rounded-2xl bg-primary text-primary-foreground font-semibold px-5 py-2.5
+               hover:brightness-105 hover:-translate-y-0.5 active:translate-y-0 active:scale-95
+               transition-all crafteria-shadow;
+    }
+    .gradient-warm {
+        background: radial-gradient(1200px 600px at 0% 0%, hsl(42 100% 90%) 0%, transparent 60%),
+                    radial-gradient(900px 500px at 100% 100%, hsl(350 80% 92%) 0%, transparent 55%),
+                    hsl(var(--background));
+    }
+    .sparkle-dots {
+        background-image: radial-gradient(circle, hsl(42 100% 60% / 0.15) 1px, transparent 1.5px);
+        background-size: 22px 22px;
+    }
+    .scrollbar-soft::-webkit-scrollbar { height: 8px; width: 8px; }
+    .scrollbar-soft::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 8px; }
+    .scrollbar-soft::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.5); }
 }
 
 @layer base {
     [data-debug-wrapper="true"] {
         display: contents !important;
     }
-
     [data-debug-wrapper="true"] > * {
         margin-left: inherit;
         margin-right: inherit;
@@ -103,13 +136,5 @@ code {
         border-right-width: inherit;
         border-top-width: inherit;
         border-bottom-width: inherit;
-        border-left-style: inherit;
-        border-right-style: inherit;
-        border-top-style: inherit;
-        border-bottom-style: inherit;
-        border-left-color: inherit;
-        border-right-color: inherit;
-        border-top-color: inherit;
-        border-bottom-color: inherit;
     }
 }
