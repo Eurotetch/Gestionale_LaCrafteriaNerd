@@ -2,10 +2,11 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { CUSTOMERS } from "@/constants/testIds";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, Search, Mail, Phone, MapPin } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Plus, Edit2, Trash2, Search, Mail, Phone, MapPin, ChevronRight } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 
 const empty = () => ({ name: "", email: "", phone: "", address: "", notes: "", tags: [] });
 
@@ -75,7 +76,12 @@ export default function CustomersPage() {
             <tbody>
               {filtered.map((c) => (
                 <tr key={c.id} className="border-t border-border hover:bg-muted/30 transition-colors">
-                  <td className="px-5 py-3 font-semibold">{c.name}</td>
+                  <td className="px-5 py-3 font-semibold">
+                    <Link to={`/clienti/${c.id}`} className="hover:text-primary inline-flex items-center gap-1 group" data-testid={`open-customer-${c.id}`}>
+                      {c.name}
+                      <ChevronRight size={14} className="opacity-0 group-hover:opacity-100 transition-opacity"/>
+                    </Link>
+                  </td>
                   <td className="px-5 py-3 text-muted-foreground">
                     <div className="space-y-0.5">
                       {c.email && <div className="flex items-center gap-1.5"><Mail size={12}/>{c.email}</div>}

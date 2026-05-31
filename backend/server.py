@@ -16,11 +16,13 @@ import uuid
 
 import bcrypt
 import jwt
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query, UploadFile, File, Header, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
+
+from storage_client import init_storage, put_object, get_object, build_path
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +230,14 @@ class OrderItem(BaseModel):
     notes: Optional[str] = None
 
 
+class OrderMaterial(BaseModel):
+    material_id: Optional[str] = None
+    name: str
+    quantity: float = 0
+    unit: str = "pz"
+    unit_cost: float = 0.0  # snapshot at time of allocation
+
+
 class Order(BaseModel):
     model_config = ConfigDict(extra="ignore")
     customer_id: Optional[str] = None
@@ -237,6 +247,7 @@ class Order(BaseModel):
     technique: Optional[str] = None
     status: str = "nuovo"  # nuovo, in_lavorazione, pronto, consegnato, annullato
     items: List[OrderItem] = []
+    materials_used: List[OrderMaterial] = []
     total: float = 0.0
     deposit: float = 0.0
     due_date: Optional[str] = None
@@ -297,8 +308,14 @@ async def startup():
     await db.users.create_index("email", unique=True)
     await db.users.create_index("id", unique=True)
     for coll in ["customers", "products", "materials", "orders",
-                 "invoices", "calendar_events", "sales"]:
+                 "invoices", "calendar_events", "sales", "files"]:
         await db[coll].create_index("id", unique=True)
+    await db.files.create_index([("parent_type", 1), ("parent_id", 1)])
+    # Init object storage (non-blocking)
+    try:
+        init_storage()
+    except Exception as e:
+        logger.warning(f"storage init: {e}")
     # Seed admin (no password — first login sets it)
     admin = await db.users.find_one({"email": ADMIN_EMAIL})
     if not admin:
@@ -575,13 +592,24 @@ async def delete_sale(sale_id: str, _: dict = Depends(require_perm("pos", "delet
 @api.get("/dashboard/stats")
 async def dashboard_stats(user: dict = Depends(get_current_user)):
     today = utcnow().date().isoformat()
+    in_7_days = (utcnow().date() + timedelta(days=7)).isoformat()
     month_prefix = utcnow().strftime("%Y-%m")
 
-    # Orders breakdown
+    # Orders breakdown + deadline alerts
     orders = await db.orders.find({}, {"_id": 0}).to_list(2000)
     by_status = {"nuovo": 0, "in_lavorazione": 0, "pronto": 0, "consegnato": 0, "annullato": 0}
     for o in orders:
         by_status[o.get("status", "nuovo")] = by_status.get(o.get("status", "nuovo"), 0) + 1
+    active_orders = [o for o in orders if o.get("status") in ("nuovo", "in_lavorazione")]
+    overdue_orders = [o for o in active_orders if o.get("due_date") and o["due_date"] < today]
+    due_soon_orders = [o for o in active_orders if o.get("due_date") and today <= o["due_date"] <= in_7_days]
+    overdue_orders.sort(key=lambda x: x.get("due_date", ""))
+    due_soon_orders.sort(key=lambda x: x.get("due_date", ""))
+
+    # Overdue invoices
+    invoices = await db.invoices.find({}, {"_id": 0}).to_list(2000)
+    overdue_invoices = [i for i in invoices if i.get("status") not in ("pagato", "bozza")
+                        and i.get("due_date") and i["due_date"] < today]
 
     # Sales
     sales = await db.sales.find({}, {"_id": 0}).to_list(2000)
@@ -593,10 +621,8 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     materials = await db.materials.find({}, {"_id": 0}).to_list(2000)
     low_stock = [m for m in materials if (m.get("stock") or 0) <= (m.get("min_stock") or 0)]
 
-    # Customers count
     customers_count = await db.customers.count_documents({})
 
-    # Upcoming events (next 7 days)
     events = await db.calendar_events.find({}, {"_id": 0}).to_list(500)
     upcoming = sorted([e for e in events if (e.get("start") or "") >= today], key=lambda e: e.get("start", ""))[:5]
 
@@ -610,6 +636,9 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         "low_stock_items": low_stock[:5],
         "customers_count": customers_count,
         "upcoming_events": upcoming,
+        "overdue_orders": overdue_orders[:10],
+        "due_soon_orders": due_soon_orders[:10],
+        "overdue_invoices": overdue_invoices[:10],
     }
 
 
@@ -654,6 +683,174 @@ async def reports_overview(user: dict = Depends(require_perm("reports", "view"))
         "total_revenue": total_revenue,
         "total_orders": len(orders),
         "total_sales": len(sales),
+    }
+
+
+# ---------------------------------------------------------------------------
+# FILES / ATTACHMENTS
+# ---------------------------------------------------------------------------
+MAX_UPLOAD_SIZE = 25 * 1024 * 1024  # 25 MB
+ALLOWED_MIME_PREFIXES = ("image/", "application/pdf", "model/", "application/octet-stream", "text/plain")
+
+
+@api.post("/upload")
+async def upload_file(
+    parent_type: str = Query(..., description="orders | customers | invoices | products"),
+    parent_id: str = Query(...),
+    file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
+):
+    if parent_type not in ("orders", "customers", "invoices", "products"):
+        raise HTTPException(400, "parent_type non valido")
+    # Permission check based on parent
+    perm_map = {"orders": "orders", "customers": "customers", "invoices": "invoices", "products": "products"}
+    if not has_permission(user, perm_map[parent_type], "edit"):
+        raise HTTPException(403, "Permesso negato")
+
+    data = await file.read()
+    if len(data) > MAX_UPLOAD_SIZE:
+        raise HTTPException(413, "File troppo grande (max 25 MB)")
+    ct = (file.content_type or "application/octet-stream").lower()
+    if not any(ct.startswith(p) for p in ALLOWED_MIME_PREFIXES) and not (file.filename or "").lower().endswith(".stl"):
+        raise HTTPException(400, f"Tipo file non consentito: {ct}")
+
+    file_id = gen_id()
+    ext = (file.filename or "bin").split(".")[-1].lower()[:8] or "bin"
+    path = build_path(user["id"], ext, file_id)
+    try:
+        result = put_object(path, data, ct)
+    except Exception as e:
+        logger.error(f"upload failed: {e}")
+        raise HTTPException(500, "Caricamento fallito")
+
+    doc = {
+        "id": file_id,
+        "storage_path": result["path"],
+        "original_filename": file.filename,
+        "content_type": ct,
+        "size": result.get("size") or len(data),
+        "parent_type": parent_type,
+        "parent_id": parent_id,
+        "uploaded_by": user["id"],
+        "is_deleted": False,
+        "created_at": utcnow_iso(),
+    }
+    await db.files.insert_one(doc)
+    doc.pop("_id", None)
+    return doc
+
+
+@api.get("/files")
+async def list_files(parent_type: str, parent_id: str, user: dict = Depends(get_current_user)):
+    items = await db.files.find(
+        {"parent_type": parent_type, "parent_id": parent_id, "is_deleted": False},
+        {"_id": 0},
+    ).to_list(200)
+    items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return items
+
+
+@api.get("/files/{file_id}/download")
+async def download_file(
+    file_id: str,
+    authorization: str = Header(default=None),
+    auth: str = Query(default=None),
+):
+    # Support both Bearer header and ?auth= query param for <img src>
+    token = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:]
+    elif auth:
+        token = auth
+    if not token:
+        raise HTTPException(401, "Non autenticato")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+    except Exception:
+        raise HTTPException(401, "Token non valido")
+    user = await db.users.find_one({"id": payload["sub"]})
+    if not user or user.get("disabled"):
+        raise HTTPException(401, "Utente non valido")
+
+    rec = await db.files.find_one({"id": file_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(404, "File non trovato")
+    try:
+        data, ct = get_object(rec["storage_path"])
+    except Exception as e:
+        logger.error(f"download fail: {e}")
+        raise HTTPException(500, "Errore download")
+    return Response(content=data, media_type=rec.get("content_type") or ct)
+
+
+@api.delete("/files/{file_id}")
+async def soft_delete_file(file_id: str, user: dict = Depends(get_current_user)):
+    rec = await db.files.find_one({"id": file_id, "is_deleted": False})
+    if not rec:
+        raise HTTPException(404, "File non trovato")
+    perm_map = {"orders": "orders", "customers": "customers", "invoices": "invoices", "products": "products"}
+    if not has_permission(user, perm_map.get(rec["parent_type"], "orders"), "edit"):
+        raise HTTPException(403, "Permesso negato")
+    await db.files.update_one({"id": file_id}, {"$set": {"is_deleted": True, "deleted_at": utcnow_iso()}})
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# COUNTERS — auto-numbering for invoices / preventivi
+# ---------------------------------------------------------------------------
+async def next_counter(key: str) -> int:
+    res = await db.counters.find_one_and_update(
+        {"_id": key},
+        {"$inc": {"value": 1}},
+        upsert=True,
+        return_document=True,
+    )
+    return res["value"] if res else 1
+
+
+@api.post("/invoices/next-number")
+async def invoice_next_number(kind: str = Query("preventivo"), _: dict = Depends(require_perm("invoices", "edit"))):
+    """Returns the next available document number for the current year, format: P-2026-0001 / F-2026-0001"""
+    year = utcnow().year
+    prefix = "F" if kind == "fattura" else "P"
+    key = f"{prefix}-{year}"
+    n = await next_counter(key)
+    return {"number": f"{prefix}-{year}-{n:04d}"}
+
+
+# ---------------------------------------------------------------------------
+# CUSTOMER DETAIL (timeline)
+# ---------------------------------------------------------------------------
+@api.get("/customers/{customer_id}/detail")
+async def customer_detail(customer_id: str, user: dict = Depends(require_perm("customers", "view"))):
+    cust = await db.customers.find_one({"id": customer_id}, {"_id": 0})
+    if not cust:
+        raise HTTPException(404, "Cliente non trovato")
+    # find orders, invoices, sales by customer_id or matching name
+    name = cust.get("name")
+    orders = await db.orders.find(
+        {"$or": [{"customer_id": customer_id}, {"customer_name": name}]}, {"_id": 0},
+    ).to_list(500)
+    invoices = await db.invoices.find(
+        {"$or": [{"customer_id": customer_id}, {"customer_name": name}]}, {"_id": 0},
+    ).to_list(500)
+    sales = await db.sales.find(
+        {"customer_name": name}, {"_id": 0},
+    ).to_list(500)
+    total_spent = sum(o.get("total", 0) for o in orders if o.get("status") == "consegnato") \
+                + sum(s.get("total", 0) for s in sales) \
+                + sum(i.get("total", 0) for i in invoices if i.get("status") == "pagato")
+    return {
+        "customer": cust,
+        "orders": sorted(orders, key=lambda x: x.get("created_at", ""), reverse=True),
+        "invoices": sorted(invoices, key=lambda x: x.get("created_at", ""), reverse=True),
+        "sales": sorted(sales, key=lambda x: x.get("created_at", ""), reverse=True),
+        "stats": {
+            "total_orders": len(orders),
+            "total_invoices": len(invoices),
+            "total_sales": len(sales),
+            "total_spent": round(total_spent, 2),
+        },
     }
 
 

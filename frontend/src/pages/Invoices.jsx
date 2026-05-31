@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { INVOICES } from "@/constants/testIds";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, Search, FileText } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Plus, Edit2, Trash2, Search, FileText, Download, Hash } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatEUR, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
+import { exportInvoicePDF } from "@/lib/pdfExport";
 
 const KINDS = [
   { value: "preventivo", label: "📝 Preventivo" },
@@ -21,13 +22,15 @@ const STATUSES = [
 
 const empty = () => ({
   kind: "preventivo", number: "", customer_name: "", items: [{ name: "", quantity: 1, price: 0 }],
-  subtotal: 0, vat_rate: 22, total: 0, status: "bozza", issue_date: "", due_date: "", notes: "",
+  subtotal: 0, vat_rate: 22, total: 0, status: "bozza",
+  issue_date: new Date().toISOString().slice(0, 10), due_date: "", notes: "",
 });
 
 export default function InvoicesPage() {
   const { can } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [filterKind, setFilterKind] = useState("");
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
 
@@ -53,13 +56,21 @@ export default function InvoicesPage() {
     onError: (e) => toast.error(formatApiError(e)),
   });
 
+  const fetchNumber = async () => {
+    try {
+      const { data } = await api.post(`/invoices/next-number`, null, { params: { kind: edit.kind } });
+      setEdit({ ...edit, number: data.number });
+    } catch (e) { toast.error(formatApiError(e)); }
+  };
+
   const filtered = items.filter((p) => {
     const s = search.toLowerCase();
+    if (filterKind && p.kind !== filterKind) return false;
     return !s || (p.customer_name || "").toLowerCase().includes(s) || (p.number || "").toLowerCase().includes(s);
   });
 
   const setItem = (i, k, v) => {
-    const items = [...edit.items]; items[i] = { ...items[i], [k]: v }; setEdit({ ...edit, items });
+    const its = [...edit.items]; its[i] = { ...its[i], [k]: v }; setEdit({ ...edit, items: its });
   };
   const addItem = () => setEdit({ ...edit, items: [...edit.items, { name: "", quantity: 1, price: 0 }] });
   const rmItem = (i) => setEdit({ ...edit, items: edit.items.filter((_, idx) => idx !== i) });
@@ -76,9 +87,14 @@ export default function InvoicesPage() {
         <div>
           <div className="text-xs uppercase tracking-widest text-secondary font-bold">amministrazione</div>
           <h1 className="text-3xl sm:text-4xl">Preventivi & Fatture 🧾</h1>
-          <p className="text-muted-foreground mt-1">Crea, condividi, traccia.</p>
+          <p className="text-muted-foreground mt-1">Crea, esporta in PDF brand, traccia gli stati.</p>
         </div>
         <div className="flex gap-2">
+          <select className="crafteria-input" value={filterKind} onChange={(e) => setFilterKind(e.target.value)}>
+            <option value="">Tutti</option>
+            <option value="preventivo">Preventivi</option>
+            <option value="fattura">Fatture</option>
+          </select>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"/>
             <input className="crafteria-input pl-9 w-full sm:w-64" placeholder="Cerca…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -114,12 +130,15 @@ export default function InvoicesPage() {
                   <td className="px-5 py-3 font-bold">{formatEUR(p.total)}</td>
                   <td className="px-5 py-3 capitalize"><span className="rounded-full text-xs font-semibold px-2.5 py-1 bg-muted">{p.status}</span></td>
                   <td className="px-5 py-3 text-muted-foreground">{formatDate(p.due_date)}</td>
-                  <td className="px-5 py-3 text-right">
+                  <td className="px-5 py-3 text-right space-x-1 whitespace-nowrap">
+                    <button onClick={() => exportInvoicePDF(p)} className="p-2 rounded-lg hover:bg-accent/15 text-accent inline-flex" title="Scarica PDF" data-testid={`pdf-invoice-${p.id}`}>
+                      <Download size={14}/>
+                    </button>
                     {can("invoices", "edit") && (
-                      <button onClick={() => { setEdit({ ...p }); setOpen(true); }} className="p-2 rounded-lg hover:bg-muted" data-testid={`edit-invoice-${p.id}`}><Edit2 size={14}/></button>
+                      <button onClick={() => { setEdit({ ...p }); setOpen(true); }} className="p-2 rounded-lg hover:bg-muted inline-flex" data-testid={`edit-invoice-${p.id}`}><Edit2 size={14}/></button>
                     )}
                     {can("invoices", "delete") && (
-                      <button onClick={() => window.confirm("Eliminare?") && del.mutate(p.id)} className="p-2 rounded-lg hover:bg-destructive/10 text-destructive" data-testid={`delete-invoice-${p.id}`}><Trash2 size={14}/></button>
+                      <button onClick={() => window.confirm("Eliminare?") && del.mutate(p.id)} className="p-2 rounded-lg hover:bg-destructive/10 text-destructive inline-flex" data-testid={`delete-invoice-${p.id}`}><Trash2 size={14}/></button>
                     )}
                   </td>
                 </tr>
@@ -132,7 +151,10 @@ export default function InvoicesPage() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-3xl rounded-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{edit?.id ? "Modifica documento" : "Nuovo documento"}</DialogTitle></DialogHeader>
+          <DialogHeader>
+            <DialogTitle>{edit?.id ? "Modifica documento" : "Nuovo documento"}</DialogTitle>
+            <DialogDescription className="sr-only">Compila il documento</DialogDescription>
+          </DialogHeader>
           {edit && (
             <>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -141,7 +163,12 @@ export default function InvoicesPage() {
                     {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
                   </select>
                 </F>
-                <F label="Numero"><input className="crafteria-input w-full" value={edit.number || ""} onChange={(e) => setEdit({ ...edit, number: e.target.value })}/></F>
+                <F label="Numero">
+                  <div className="flex gap-1">
+                    <input className="crafteria-input w-full" value={edit.number || ""} onChange={(e) => setEdit({ ...edit, number: e.target.value })} placeholder="auto/manuale"/>
+                    <button type="button" onClick={fetchNumber} className="px-2 rounded-xl bg-muted hover:bg-muted/70" title="Auto-genera"><Hash size={14}/></button>
+                  </div>
+                </F>
                 <F label="Cliente *"><input className="crafteria-input w-full" value={edit.customer_name} onChange={(e) => setEdit({ ...edit, customer_name: e.target.value })}/></F>
                 <F label="Data emissione"><input type="date" className="crafteria-input w-full" value={edit.issue_date || ""} onChange={(e) => setEdit({ ...edit, issue_date: e.target.value })}/></F>
                 <F label="Scadenza"><input type="date" className="crafteria-input w-full" value={edit.due_date || ""} onChange={(e) => setEdit({ ...edit, due_date: e.target.value })}/></F>
@@ -180,7 +207,12 @@ export default function InvoicesPage() {
               <F label="Note"><textarea rows={2} className="crafteria-input w-full mt-3" value={edit.notes || ""} onChange={(e) => setEdit({ ...edit, notes: e.target.value })}/></F>
             </>
           )}
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+            {edit?.id && (
+              <button onClick={() => exportInvoicePDF(edit)} className="rounded-2xl bg-accent text-accent-foreground font-semibold px-4 py-2.5 hover:brightness-105 inline-flex items-center gap-2">
+                <Download size={14}/> Esporta PDF
+              </button>
+            )}
             <button className="crafteria-btn-primary" data-testid={INVOICES.saveBtn} onClick={() => save.mutate(edit)}>Salva</button>
           </DialogFooter>
         </DialogContent>

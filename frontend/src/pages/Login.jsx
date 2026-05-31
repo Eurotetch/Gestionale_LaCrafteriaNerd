@@ -3,17 +3,16 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import api, { formatApiError } from "@/lib/api";
 import { AUTH } from "@/constants/testIds";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, ArrowRight, ArrowLeft, KeyRound } from "lucide-react";
 
 export default function LoginPage() {
   const { user, login, setupPassword } = useAuth();
   const navigate = useNavigate();
 
+  const [step, setStep] = useState("email");  // email | login | setup
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [mode, setMode] = useState("login");      // login | setup
-  const [checking, setChecking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
 
@@ -22,23 +21,26 @@ export default function LoginPage() {
   const handleCheck = async (e) => {
     e?.preventDefault();
     if (!email) return;
-    setChecking(true); setError(null);
+    setBusy(true); setError(null);
     try {
       const { data } = await api.post("/auth/check-email", { email });
       if (!data.exists) {
         setError("Email non riconosciuta. Contatta l'admin per ricevere un accesso.");
-        setMode("login");
-      } else if (data.disabled) {
-        setError("Questo account è disabilitato.");
-      } else if (data.requires_password_setup) {
-        setMode("setup");
+        return;
+      }
+      if (data.disabled) {
+        setError("Questo account è disabilitato. Contatta l'admin.");
+        return;
+      }
+      if (data.requires_password_setup) {
+        setStep("setup"); setPassword(""); setConfirm("");
       } else {
-        setMode("login");
+        setStep("login"); setPassword("");
       }
     } catch (err) {
       setError(formatApiError(err));
     } finally {
-      setChecking(false);
+      setBusy(false);
     }
   };
 
@@ -46,7 +48,7 @@ export default function LoginPage() {
     e.preventDefault();
     setError(null); setBusy(true);
     try {
-      if (mode === "setup") {
+      if (step === "setup") {
         if (password.length < 6) throw new Error("Password troppo corta (min 6 caratteri)");
         if (password !== confirm) throw new Error("Le password non coincidono");
         await setupPassword(email, password);
@@ -55,13 +57,15 @@ export default function LoginPage() {
       }
       navigate("/");
     } catch (err) {
-      setError(err.message?.startsWith("Le password") || err.message?.startsWith("Password troppo")
-        ? err.message
-        : formatApiError(err));
+      const msg = err.message?.startsWith("Le password") || err.message?.startsWith("Password troppo")
+        ? err.message : formatApiError(err);
+      setError(msg);
     } finally {
       setBusy(false);
     }
   };
+
+  const goBack = () => { setStep("email"); setPassword(""); setConfirm(""); setError(null); };
 
   return (
     <div className="min-h-screen gradient-warm flex items-center justify-center p-4 relative overflow-hidden">
@@ -83,60 +87,109 @@ export default function LoginPage() {
         </div>
 
         <form
-          onSubmit={mode === "check" ? handleCheck : handleSubmit}
+          onSubmit={step === "email" ? handleCheck : handleSubmit}
           className="crafteria-card p-7 sm:p-8 space-y-4"
         >
-          <div>
-            <label className="text-sm font-semibold block mb-1.5">Email</label>
-            <input
-              data-testid={AUTH.emailInput}
-              type="email"
-              className="crafteria-input w-full"
-              placeholder="tua@email.it"
-              value={email}
-              onChange={(e) => { setEmail(e.target.value); setMode("login"); }}
-              required
-              autoComplete="username"
-            />
+          {/* Step indicator */}
+          <div className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-widest">
+            <span className={step === "email" ? "text-primary" : "text-muted-foreground"}>① Email</span>
+            <span className="text-muted-foreground">→</span>
+            <span className={step !== "email" ? "text-primary" : "text-muted-foreground"}>
+              ② {step === "setup" ? "Imposta password" : "Password"}
+            </span>
           </div>
 
-          {mode === "setup" && (
-            <div className="bg-primary/10 border border-primary/30 rounded-2xl p-3 text-sm">
-              🐉 <strong>Primo accesso!</strong> Imposta ora la tua password.
-            </div>
+          {step === "email" && (
+            <>
+              <label className="block text-sm">
+                <span className="block font-semibold mb-1.5">Email</span>
+                <input
+                  data-testid={AUTH.emailInput}
+                  type="email"
+                  className="crafteria-input w-full"
+                  placeholder="tua@email.it"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  autoComplete="username"
+                  autoFocus
+                />
+              </label>
+              <button
+                type="submit"
+                data-testid="login-continue-btn"
+                disabled={!email || busy}
+                className="w-full crafteria-btn-primary py-3 flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {busy ? <Loader2 className="animate-spin" size={16}/> : <>Continua <ArrowRight size={16}/></>}
+              </button>
+              <p className="text-xs text-muted-foreground text-center pt-1">
+                Inserisci la tua email per iniziare. Se è il primo accesso ti chiederemo di impostare la password.
+              </p>
+            </>
           )}
 
-          <div>
-            <label className="text-sm font-semibold block mb-1.5">
-              {mode === "setup" ? "Nuova password" : "Password"}
-            </label>
-            <input
-              data-testid={AUTH.passwordInput}
-              type="password"
-              className="crafteria-input w-full"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
-              autoComplete={mode === "setup" ? "new-password" : "current-password"}
-            />
-          </div>
+          {step !== "email" && (
+            <>
+              <button type="button" onClick={goBack}
+                      className="text-xs text-muted-foreground flex items-center gap-1 hover:text-foreground transition-colors">
+                <ArrowLeft size={12}/> Cambia email
+              </button>
 
-          {mode === "setup" && (
-            <div>
-              <label className="text-sm font-semibold block mb-1.5">Conferma password</label>
-              <input
-                data-testid={AUTH.confirmPasswordInput}
-                type="password"
-                className="crafteria-input w-full"
-                placeholder="••••••••"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
+              <div className="rounded-2xl bg-muted/40 px-3 py-2 text-sm font-semibold flex items-center gap-2">
+                <KeyRound size={14} className="text-primary"/> {email}
+              </div>
+
+              {step === "setup" && (
+                <div className="bg-primary/10 border border-primary/30 rounded-2xl p-3 text-sm">
+                  🐉 <strong>Primo accesso!</strong> Scegli ora la tua password personale.
+                </div>
+              )}
+
+              <label className="block text-sm">
+                <span className="block font-semibold mb-1.5">
+                  {step === "setup" ? "Nuova password" : "Password"}
+                </span>
+                <input
+                  data-testid={AUTH.passwordInput}
+                  type="password"
+                  className="crafteria-input w-full"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  minLength={6}
+                  autoFocus
+                  autoComplete={step === "setup" ? "new-password" : "current-password"}
+                />
+              </label>
+
+              {step === "setup" && (
+                <label className="block text-sm">
+                  <span className="block font-semibold mb-1.5">Conferma password</span>
+                  <input
+                    data-testid={AUTH.confirmPasswordInput}
+                    type="password"
+                    className="crafteria-input w-full"
+                    placeholder="••••••••"
+                    value={confirm}
+                    onChange={(e) => setConfirm(e.target.value)}
+                    required
+                    minLength={6}
+                  />
+                </label>
+              )}
+
+              <button
+                type="submit"
+                data-testid={step === "setup" ? AUTH.setupBtn : AUTH.loginBtn}
+                disabled={busy}
+                className="w-full crafteria-btn-primary py-3 disabled:opacity-60"
+              >
+                {busy ? <Loader2 className="animate-spin mx-auto" size={16}/>
+                      : (step === "setup" ? "✨ Imposta password & Entra" : "Entra")}
+              </button>
+            </>
           )}
 
           {error && (
@@ -145,29 +198,6 @@ export default function LoginPage() {
               {error}
             </div>
           )}
-
-          <div className="flex gap-2 pt-1">
-            <button
-              type="button"
-              onClick={handleCheck}
-              disabled={!email || checking}
-              className="flex-1 rounded-2xl bg-muted text-foreground font-semibold px-4 py-3 hover:bg-muted/70 transition-all disabled:opacity-50"
-            >
-              {checking ? <Loader2 className="animate-spin mx-auto" size={16}/> : "Verifica email"}
-            </button>
-            <button
-              type="submit"
-              data-testid={mode === "setup" ? AUTH.setupBtn : AUTH.loginBtn}
-              disabled={busy}
-              className="flex-1 crafteria-btn-primary py-3 disabled:opacity-60"
-            >
-              {busy ? <Loader2 className="animate-spin mx-auto" size={16}/> : (mode === "setup" ? "Imposta & Entra" : "Entra")}
-            </button>
-          </div>
-
-          <p className="text-xs text-muted-foreground text-center pt-2">
-            Premi <strong>Verifica email</strong> al primo accesso per impostare la password.
-          </p>
         </form>
 
         <div className="text-center mt-6 text-xs text-muted-foreground">

@@ -2,8 +2,9 @@ import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { DASHBOARD } from "@/constants/testIds";
-import { Wallet, ClipboardList, Boxes, Users, Calendar as CalendarIcon, Sparkles } from "lucide-react";
-import { formatEUR } from "@/lib/utils";
+import { Wallet, ClipboardList, Boxes, Users, Calendar as CalendarIcon, Sparkles, AlertTriangle, Clock } from "lucide-react";
+import { formatEUR, formatDate } from "@/lib/utils";
+import { Link } from "react-router-dom";
 
 const STATUS_META = {
   nuovo:           { label: "Nuovi",          color: "bg-secondary/20 text-secondary" },
@@ -12,6 +13,25 @@ const STATUS_META = {
   consegnato:      { label: "Consegnati",     color: "bg-muted text-foreground/70" },
   annullato:       { label: "Annullati",      color: "bg-destructive/10 text-destructive" },
 };
+
+function AlertCard({ tone, icon: Icon, title, count, link, testId, children }) {
+  const toneCls = {
+    destructive: "bg-destructive/10 border-destructive/40 text-destructive",
+    primary: "bg-primary/15 border-primary/40 text-foreground",
+    secondary: "bg-secondary/15 border-secondary/40 text-secondary",
+  }[tone];
+  return (
+    <Link to={link} data-testid={testId}
+          className={`block rounded-2xl border p-4 ${toneCls} hover:brightness-95 transition-all crafteria-shadow`}>
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2 font-bold"><Icon size={16}/> {title}</div>
+        <span className="text-2xl font-extrabold">{count}</span>
+      </div>
+      <div className="space-y-0.5">{children}</div>
+    </Link>
+  );
+}
+
 
 function StatCard({ icon: Icon, label, value, hint, color, testId }) {
   return (
@@ -60,6 +80,36 @@ export default function Dashboard() {
           </p>
         </div>
       </div>
+
+      {/* Notification banners */}
+      {((stats.overdue_orders || []).length > 0 || (stats.due_soon_orders || []).length > 0 || (stats.overdue_invoices || []).length > 0) && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3" data-testid="dashboard-alerts">
+          {(stats.overdue_orders || []).length > 0 && (
+            <AlertCard tone="destructive" icon={AlertTriangle} title="Ordini in ritardo"
+                       count={stats.overdue_orders.length} link="/ordini" testId="alert-overdue-orders">
+              {stats.overdue_orders.slice(0, 3).map((o) => (
+                <div key={o.id} className="text-xs truncate">📋 {o.title} — <span className="font-semibold">{formatDate(o.due_date)}</span></div>
+              ))}
+            </AlertCard>
+          )}
+          {(stats.due_soon_orders || []).length > 0 && (
+            <AlertCard tone="primary" icon={Clock} title="Ordini in scadenza (7gg)"
+                       count={stats.due_soon_orders.length} link="/ordini" testId="alert-due-soon">
+              {stats.due_soon_orders.slice(0, 3).map((o) => (
+                <div key={o.id} className="text-xs truncate">📋 {o.title} — <span className="font-semibold">{formatDate(o.due_date)}</span></div>
+              ))}
+            </AlertCard>
+          )}
+          {(stats.overdue_invoices || []).length > 0 && (
+            <AlertCard tone="secondary" icon={AlertTriangle} title="Fatture scadute"
+                       count={stats.overdue_invoices.length} link="/fatture" testId="alert-overdue-invoices">
+              {stats.overdue_invoices.slice(0, 3).map((i) => (
+                <div key={i.id} className="text-xs truncate">🧾 {i.number || "—"} {i.customer_name} — {formatEUR(i.total)}</div>
+              ))}
+            </AlertCard>
+          )}
+        </div>
+      )}
 
       {/* Stats grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">

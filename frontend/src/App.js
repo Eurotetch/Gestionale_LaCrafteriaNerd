@@ -14,6 +14,7 @@ import CalendarPage from "@/pages/Calendar";
 import POSPage from "@/pages/POS";
 import Reports from "@/pages/Reports";
 import Users from "@/pages/Users";
+import CustomerDetail from "@/pages/CustomerDetail";
 import { Toaster } from "@/components/ui/sonner";
 
 const wrap = (el, opts = {}) => (
@@ -29,6 +30,7 @@ export default function App() {
           <Route path="/" element={wrap(<Dashboard/>)} />
           <Route path="/ordini" element={wrap(<Orders/>, { module: "orders" })} />
           <Route path="/clienti" element={wrap(<Customers/>, { module: "customers" })} />
+          <Route path="/clienti/:id" element={wrap(<CustomerDetail/>, { module: "customers" })} />
           <Route path="/prodotti" element={wrap(<Products/>, { module: "products" })} />
           <Route path="/magazzino" element={wrap(<Inventory/>, { module: "inventory" })} />
           <Route path="/fatture" element={wrap(<Invoices/>, { module: "invoices" })} />
