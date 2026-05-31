@@ -62,14 +62,22 @@ export default function Dashboard() {
       </div>
 
       {/* Stats grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
         <StatCard
           testId={DASHBOARD.revenueMonth}
           icon={Wallet} label="Incasso del mese"
           value={isLoading ? "…" : formatEUR(stats.revenue_month || 0)}
-          hint={`Oggi: ${formatEUR(stats.revenue_today || 0)} • ${stats.sales_count_today || 0} vendite`}
+          hint={`In totale questo mese`}
           color="bg-accent/15 text-accent"
         />
+        <div data-testid={DASHBOARD.revenueToday}>
+          <StatCard
+            icon={Wallet} label="Incasso oggi"
+            value={isLoading ? "…" : formatEUR(stats.revenue_today || 0)}
+            hint={`${stats.sales_count_today || 0} vendite alla cassa oggi`}
+            color="bg-primary/20 text-primary-foreground"
+          />
+        </div>
         <StatCard
           testId={DASHBOARD.ordersTotal}
           icon={ClipboardList} label="Ordini totali"
