@@ -2,10 +2,11 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { POS } from "@/constants/testIds";
-import { Plus, Minus, Trash2, ShoppingCart, Package } from "lucide-react";
+import { Plus, Minus, Trash2, ShoppingCart, Package, Printer } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatEUR, TECHNIQUES, techMeta } from "@/lib/utils";
 import { toast } from "sonner";
+import { printReceipt } from "@/lib/receiptPrint";
 
 const PAYMENT_METHODS = [
   { value: "contanti", label: "💵 Contanti" },
@@ -15,7 +16,7 @@ const PAYMENT_METHODS = [
 ];
 
 export default function POSPage() {
-  const { can } = useAuth();
+  const { user, can } = useAuth();
   const qc = useQueryClient();
   const [tech, setTech] = useState("");
   const [cart, setCart] = useState([]);
@@ -24,6 +25,8 @@ export default function POSPage() {
   const [customer, setCustomer] = useState("");
   const [search, setSearch] = useState("");
   const [customQty, setCustomQty] = useState(1);
+  const [lastSale, setLastSale] = useState(null);
+  const [autoPrint, setAutoPrint] = useState(true);
 
   const { data: products = [] } = useQuery({
     queryKey: ["products"], queryFn: async () => (await api.get("/products")).data,
@@ -31,8 +34,12 @@ export default function POSPage() {
 
   const checkout = useMutation({
     mutationFn: async (payload) => (await api.post("/sales", payload)).data,
-    onSuccess: () => {
+    onSuccess: (sale) => {
       toast.success("Vendita registrata! ✨");
+      setLastSale(sale);
+      if (autoPrint) {
+        setTimeout(() => printReceipt(sale, { operator: user?.name }), 200);
+      }
       setCart([]); setDiscount(0); setCustomer("");
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       qc.invalidateQueries({ queryKey: ["sales"] });
@@ -185,6 +192,26 @@ export default function POSPage() {
               {checkout.isPending ? "…" : "✨ Incassa"}
             </button>
           </div>
+
+          <label className="flex items-center gap-2 text-xs text-muted-foreground mt-1 cursor-pointer">
+            <input type="checkbox" checked={autoPrint} onChange={(e) => setAutoPrint(e.target.checked)} className="accent-primary"/>
+            Stampa scontrino automaticamente dopo l'incasso
+          </label>
+
+          {lastSale && (
+            <div className="bg-muted/40 rounded-2xl p-3 mt-2 flex items-center justify-between text-sm">
+              <div>
+                <div className="font-semibold">Ultima vendita: {formatEUR(lastSale.total)}</div>
+                <div className="text-xs text-muted-foreground">#{(lastSale.id || "").slice(0, 8).toUpperCase()}</div>
+              </div>
+              <button
+                onClick={() => printReceipt(lastSale, { operator: user?.name })}
+                className="rounded-xl bg-card border border-border px-3 py-1.5 text-xs font-bold inline-flex items-center gap-1.5 hover:bg-card/70"
+                data-testid="pos-reprint-btn">
+                <Printer size={12}/> Ristampa
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

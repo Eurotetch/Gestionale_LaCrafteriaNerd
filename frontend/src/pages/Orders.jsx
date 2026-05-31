@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { ORDERS } from "@/constants/testIds";
@@ -9,6 +9,7 @@ import { formatEUR, formatDate, TECHNIQUES, STATUS_OPTIONS, techMeta } from "@/l
 import { toast } from "sonner";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import Attachments from "@/components/Attachments";
+import { FileText, Receipt } from "lucide-react";
 
 const COLUMNS = STATUS_OPTIONS.filter((s) => s.value !== "annullato");
 
@@ -71,9 +72,25 @@ export default function OrdersPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["orders"] }); toast.success("Eliminato"); },
     onError: (e) => toast.error(formatApiError(e)),
   });
+  const convert = useMutation({
+    mutationFn: async ({ id, kind }) => (await api.post(`/orders/${id}/convert?kind=${kind}`)).data,
+    onSuccess: (data, vars) => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      toast.success(`${vars.kind === "fattura" ? "Fattura" : "Preventivo"} ${data.number} creata`);
+    },
+    onError: (e) => toast.error(formatApiError(e)),
+  });
 
   const openNew = () => { setEdit(emptyOrder()); setOpen(true); };
   const openEdit = (o) => { setEdit({ ...o, materials_used: o.materials_used || [], items: o.items || [] }); setOpen(true); };
+
+  // Listen for convert events from the dialog
+  useEffect(() => {
+    const h = (e) => convert.mutate(e.detail);
+    window.addEventListener("crafteria-convert", h);
+    return () => window.removeEventListener("crafteria-convert", h);
+  }, [convert]);
 
   const filtered = orders.filter((o) => {
     const s = search.toLowerCase();
@@ -142,8 +159,12 @@ export default function OrdersPage() {
                               >
                                 <div className="flex items-start gap-2">
                                   {can("orders", "edit") && (
-                                    <div {...prov.dragHandleProps} className="text-muted-foreground cursor-grab active:cursor-grabbing pt-0.5">
-                                      <GripVertical size={14}/>
+                                    <div
+                                      {...prov.dragHandleProps}
+                                      className="text-muted-foreground cursor-grab active:cursor-grabbing pt-0.5 -m-1 p-1 rounded-md hover:bg-muted/70 touch-none select-none"
+                                      style={{ touchAction: "none" }}
+                                      aria-label="Trascina">
+                                      <GripVertical size={18}/>
                                     </div>
                                   )}
                                   <div className="min-w-0 flex-1">
@@ -162,6 +183,20 @@ export default function OrdersPage() {
                                     <button onClick={() => openEdit(o)} className="flex-1 text-xs rounded-lg bg-muted px-2 py-1 hover:bg-muted/70 inline-flex items-center justify-center gap-1" data-testid={`edit-order-${o.id}`}>
                                       <Edit2 size={12}/> Modifica
                                     </button>
+                                    {can("invoices", "edit") && (
+                                      <>
+                                        <button onClick={() => convert.mutate({ id: o.id, kind: "preventivo" })}
+                                                title="Genera preventivo"
+                                                className="p-1.5 rounded-lg hover:bg-secondary/20 text-secondary" data-testid={`convert-p-${o.id}`}>
+                                          <FileText size={14}/>
+                                        </button>
+                                        <button onClick={() => convert.mutate({ id: o.id, kind: "fattura" })}
+                                                title="Genera fattura"
+                                                className="p-1.5 rounded-lg hover:bg-accent/20 text-accent" data-testid={`convert-f-${o.id}`}>
+                                          <Receipt size={14}/>
+                                        </button>
+                                      </>
+                                    )}
                                     {can("orders", "delete") && (
                                       <button onClick={() => window.confirm("Eliminare?") && del.mutate(o.id)}
                                               className="p-1.5 rounded-lg hover:bg-destructive/10 text-destructive" data-testid={`delete-order-${o.id}`}>
@@ -294,7 +329,21 @@ function OrderDialog({ open, onOpenChange, value, onChange, onSave, customers, m
           </div>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="gap-2 flex-wrap">
+          {value.id && canEdit && (
+            <>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("crafteria-convert", { detail: { id: value.id, kind: "preventivo" } }))}
+                className="rounded-2xl bg-secondary/20 text-secondary px-3 py-2 text-sm font-semibold inline-flex items-center gap-1.5 hover:brightness-95">
+                📝 Genera preventivo
+              </button>
+              <button
+                onClick={() => window.dispatchEvent(new CustomEvent("crafteria-convert", { detail: { id: value.id, kind: "fattura" } }))}
+                className="rounded-2xl bg-accent/20 text-accent px-3 py-2 text-sm font-semibold inline-flex items-center gap-1.5 hover:brightness-95">
+                🧾 Genera fattura
+              </button>
+            </>
+          )}
           <button className="crafteria-btn-primary" data-testid={ORDERS.saveBtn} onClick={onSave}>
             {value.id ? "Salva modifiche" : "Crea ordine"}
           </button>

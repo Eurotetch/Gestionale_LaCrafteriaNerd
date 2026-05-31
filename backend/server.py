@@ -25,7 +25,11 @@ from pydantic import BaseModel, Field, EmailStr, ConfigDict
 from storage_client import init_storage, put_object, get_object, build_path
 from telegram_client import (
     send_message as tg_send, get_updates as tg_get_updates, get_me as tg_get_me,
-    build_daily_summary, setup_scheduler,
+    build_evening_summary, build_deadlines_message, build_revenue_message,
+    build_warehouse_message, setup_scheduler, handle_update as tg_handle_update,
+    set_webhook as tg_set_webhook, delete_webhook as tg_delete_webhook,
+    get_webhook_info as tg_get_webhook_info, set_my_commands as tg_set_commands,
+    WEBHOOK_SECRET,
 )
 
 
@@ -665,6 +669,63 @@ async def orders_delete(order_id: str, user: dict = Depends(require_perm("orders
     return {"ok": True}
 
 
+@api.post("/orders/{order_id}/convert")
+async def orders_convert(
+    order_id: str,
+    kind: str = Query("preventivo", regex="^(preventivo|fattura)$"),
+    user: dict = Depends(require_perm("invoices", "edit")),
+):
+    """Crea un preventivo o fattura a partire da un ordine esistente."""
+    o = await db.orders.find_one({"id": order_id})
+    if not o:
+        raise HTTPException(404, "Ordine non trovato")
+
+    year = utcnow().year
+    prefix = "F" if kind == "fattura" else "P"
+    n = await next_counter(f"{prefix}-{year}")
+    number = f"{prefix}-{year}-{n:04d}"
+
+    items = o.get("items") or []
+    if not items:
+        # Fallback: una sola riga con titolo+totale
+        items = [{
+            "product_id": None,
+            "name": o.get("title") or "Lavorazione",
+            "quantity": 1,
+            "price": o.get("total") or 0,
+        }]
+    subtotal = sum((it.get("price", 0) or 0) * (it.get("quantity", 0) or 0) for it in items)
+    vat_rate = 22.0
+    total = round(subtotal * (1 + vat_rate / 100), 2)
+
+    inv = {
+        "id": gen_id(),
+        "kind": kind,
+        "number": number,
+        "customer_id": o.get("customer_id"),
+        "customer_name": o.get("customer_name") or "—",
+        "items": items,
+        "subtotal": round(subtotal, 2),
+        "vat_rate": vat_rate,
+        "total": total,
+        "status": "bozza",
+        "issue_date": utcnow().date().isoformat(),
+        "due_date": o.get("due_date"),
+        "notes": f"Generato dall'ordine «{o.get('title','')}»",
+        "from_order_id": order_id,
+        "created_at": utcnow_iso(),
+        "updated_at": utcnow_iso(),
+        "created_by": user["id"],
+    }
+    await db.invoices.insert_one(inv)
+    # Link back on order
+    invoices_links = o.get("invoices_generated") or []
+    invoices_links.append({"id": inv["id"], "kind": kind, "number": number, "created_at": inv["created_at"]})
+    await db.orders.update_one({"id": order_id}, {"$set": {"invoices_generated": invoices_links}})
+    inv.pop("_id", None)
+    return inv
+
+
 # ---------------------------------------------------------------------------
 # POS / Sales
 # ---------------------------------------------------------------------------
@@ -1042,11 +1103,56 @@ async def tg_send_now(_: dict = Depends(require_admin)):
     chat_id = cfg.get("chat_id")
     if not chat_id:
         raise HTTPException(400, "chat_id non configurato")
-    text = await build_daily_summary(db)
+    text = await build_evening_summary(db)
     try:
         await tg_send(chat_id, text)
     except Exception as e:
         raise HTTPException(500, f"Invio fallito: {e}")
+    return {"ok": True}
+
+
+@api.post("/telegram/setup-webhook")
+async def tg_setup_webhook(request: Request, public_url: str = Query(default=""), _: dict = Depends(require_admin)):
+    """Configura il webhook Telegram per ricevere comandi in tempo reale.
+    Usa public_url se fornito, altrimenti tenta il base_url della request (deve essere HTTPS)."""
+    base = (public_url or "").rstrip("/")
+    if not base:
+        base = str(request.base_url).rstrip("/")
+        # Force https
+        if base.startswith("http://"):
+            base = "https://" + base[len("http://"):]
+    if not WEBHOOK_SECRET:
+        raise HTTPException(400, "TELEGRAM_WEBHOOK_SECRET non configurato")
+    url = f"{base}/api/telegram/webhook/{WEBHOOK_SECRET}"
+    res = await tg_set_webhook(url)
+    await tg_set_commands()
+    return {"webhook_url": url, "telegram_response": res}
+
+
+@api.post("/telegram/delete-webhook")
+async def tg_remove_webhook(_: dict = Depends(require_admin)):
+    res = await tg_delete_webhook()
+    return res
+
+
+@api.get("/telegram/webhook-info")
+async def tg_webhook_info(_: dict = Depends(require_admin)):
+    return await tg_get_webhook_info()
+
+
+@api.post("/telegram/webhook/{secret}")
+async def tg_webhook(secret: str, request: Request):
+    """Endpoint pubblico chiamato da Telegram (validato via secret in URL)."""
+    if not WEBHOOK_SECRET or secret != WEBHOOK_SECRET:
+        raise HTTPException(403, "Invalid webhook secret")
+    try:
+        update = await request.json()
+    except Exception:
+        return {"ok": False}
+    try:
+        await tg_handle_update(db, update)
+    except Exception as e:
+        logger.error(f"webhook handler error: {e}")
     return {"ok": True}
 
 

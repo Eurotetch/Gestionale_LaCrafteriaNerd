@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import api, { formatApiError } from "@/lib/api";
-import { Send, RefreshCw, CheckCircle2, AlertTriangle, Bell, BellOff } from "lucide-react";
+import api, { formatApiError, API_BASE } from "@/lib/api";
+import { Send, RefreshCw, CheckCircle2, AlertTriangle, Bell, BellOff, Webhook, MessageSquare } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SettingsPage() {
@@ -44,6 +44,28 @@ export default function SettingsPage() {
     onError: (e) => toast.error(formatApiError(e)),
   });
 
+  const { data: webhookInfo } = useQuery({
+    queryKey: ["telegram-webhook-info"],
+    queryFn: async () => (await api.get("/telegram/webhook-info")).data,
+    refetchInterval: 15000,
+  });
+
+  const setupWebhook = useMutation({
+    mutationFn: async () => {
+      const publicUrl = API_BASE.replace(/\/api$/, "");
+      return (await api.post(`/telegram/setup-webhook?public_url=${encodeURIComponent(publicUrl)}`)).data;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["telegram-webhook-info"] }); toast.success("Comandi bot attivati ✨"); },
+    onError: (e) => toast.error(formatApiError(e)),
+  });
+
+  const removeWebhook = useMutation({
+    mutationFn: async () => (await api.post("/telegram/delete-webhook")).data,
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["telegram-webhook-info"] }); toast.success("Comandi bot disattivati"); },
+  });
+
+  const webhookActive = !!webhookInfo?.result?.url;
+
   const choose = (chat) => {
     setConfig.mutate({ chat_id: String(chat.chat_id), chat_title: chat.title });
     setDiscovered(null);
@@ -55,7 +77,7 @@ export default function SettingsPage() {
         <div className="text-xs uppercase tracking-widest text-secondary font-bold">impostazioni</div>
         <h1 className="text-3xl sm:text-4xl">Notifiche Telegram 🐉</h1>
         <p className="text-muted-foreground mt-1">
-          Ricevi ogni mattina alle {status?.schedule?.split(" ")[0] || "09:30"} un riassunto degli ordini in scadenza, fatture scadute e materiali sotto soglia.
+          Ricevi ogni sera alle {status?.schedule?.split(" ")[0] || "20:00"} un riassunto della giornata e dei lavori del giorno dopo.
         </p>
       </div>
 
@@ -165,7 +187,7 @@ export default function SettingsPage() {
                     Invio automatico alle {status.schedule}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Ordini in ritardo, scadenze 24/48h, fatture scadute, materiali sotto soglia, incasso del giorno prima.
+                    Riepilogo della giornata + ordini in scadenza domani + attenzioni (fatture scadute, materiali sotto soglia).
                   </div>
                 </div>
               </label>
@@ -186,6 +208,52 @@ export default function SettingsPage() {
                 data-testid="telegram-send-now-btn">
                 <Bell size={14}/> Invia riassunto adesso
               </button>
+            </div>
+
+            <div className="border-t border-border pt-5">
+              <h3 className="font-extrabold mb-1 flex items-center gap-2">
+                <MessageSquare size={16}/> Comandi bot interattivi
+              </h3>
+              <p className="text-sm text-muted-foreground mb-3">
+                Attiva il webhook per ricevere risposte in tempo reale ai comandi:
+                <code className="bg-muted px-1 mx-1 rounded">/scadenze</code>,
+                <code className="bg-muted px-1 mx-1 rounded">/incassi</code>,
+                <code className="bg-muted px-1 mx-1 rounded">/magazzino</code>,
+                <code className="bg-muted px-1 mx-1 rounded">/riassunto</code>,
+                <code className="bg-muted px-1 mx-1 rounded">/help</code>.
+                <br/>
+                <span className="text-xs">
+                  Nei gruppi scrivi i comandi con la menzione del bot, es. <code>/scadenze@gestionale_lacrafterianerd_bot</code>.
+                </span>
+              </p>
+              <div className={`rounded-2xl p-3 ${webhookActive ? "bg-accent/10 border border-accent/30" : "bg-muted/40 border border-border"}`}>
+                {webhookActive ? (
+                  <div className="text-sm">
+                    <div className="font-bold flex items-center gap-2 text-accent">
+                      <CheckCircle2 size={14}/> Webhook attivo
+                    </div>
+                    <div className="text-xs text-muted-foreground font-mono break-all mt-1">{webhookInfo.result.url}</div>
+                  </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">Webhook non attivo — i comandi del bot non risponderanno.</div>
+                )}
+              </div>
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setupWebhook.mutate()}
+                  disabled={setupWebhook.isPending}
+                  className="rounded-2xl bg-primary text-primary-foreground font-semibold px-4 py-2.5 hover:brightness-105 disabled:opacity-50 inline-flex items-center gap-2"
+                  data-testid="setup-webhook-btn">
+                  <Webhook size={14}/> {webhookActive ? "Riconfigura webhook" : "Attiva comandi bot"}
+                </button>
+                {webhookActive && (
+                  <button
+                    onClick={() => { if (window.confirm("Disattivare i comandi?")) removeWebhook.mutate(); }}
+                    className="rounded-2xl bg-muted px-4 py-2.5 text-sm font-semibold hover:bg-muted/70">
+                    Disattiva
+                  </button>
+                )}
+              </div>
             </div>
           </>
         ) : (
