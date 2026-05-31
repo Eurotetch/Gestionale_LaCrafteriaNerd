@@ -15,6 +15,7 @@ import POSPage from "@/pages/POS";
 import Reports from "@/pages/Reports";
 import Users from "@/pages/Users";
 import CustomerDetail from "@/pages/CustomerDetail";
+import SettingsPage from "@/pages/Settings";
 import { Toaster } from "@/components/ui/sonner";
 
 const wrap = (el, opts = {}) => (
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/cassa" element={wrap(<POSPage/>, { module: "pos" })} />
           <Route path="/report" element={wrap(<Reports/>, { module: "reports" })} />
           <Route path="/utenti" element={wrap(<Users/>, { adminOnly: true })} />
+          <Route path="/impostazioni" element={wrap(<SettingsPage/>, { adminOnly: true })} />
           <Route path="*" element={wrap(<Dashboard/>)} />
         </Routes>
         <Toaster richColors position="top-right" />

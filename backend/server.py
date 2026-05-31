@@ -23,6 +23,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
 from storage_client import init_storage, put_object, get_object, build_path
+from telegram_client import (
+    send_message as tg_send, get_updates as tg_get_updates, get_me as tg_get_me,
+    build_daily_summary, setup_scheduler,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +320,11 @@ async def startup():
         init_storage()
     except Exception as e:
         logger.warning(f"storage init: {e}")
+    # Telegram daily-summary scheduler
+    try:
+        setup_scheduler(db)
+    except Exception as e:
+        logger.warning(f"telegram scheduler: {e}")
     # Seed admin (no password — first login sets it)
     admin = await db.users.find_one({"email": ADMIN_EMAIL})
     if not admin:
@@ -546,9 +555,114 @@ def make_crud(router: APIRouter, base: str, collection_name: str, module: str, m
 make_crud(api, "customers", "customers", "customers", Customer)
 make_crud(api, "products", "products", "products", Product)
 make_crud(api, "materials", "materials", "inventory", Material)
-make_crud(api, "orders", "orders", "orders", Order)
+# Orders intentionally handled below (custom logic: inventory auto-decrement)
 make_crud(api, "invoices", "invoices", "invoices", Invoice)
 make_crud(api, "calendar", "calendar_events", "calendar", CalendarEvent)
+
+
+# ---------------------------------------------------------------------------
+# ORDERS — custom CRUD with inventory auto-decrement on "consegnato"
+# ---------------------------------------------------------------------------
+async def apply_inventory_decrement(order: dict, user_id: str):
+    """Decrement stock based on materials_used; idempotent via inventory_applied flag."""
+    if order.get("inventory_applied"):
+        return
+    movements = []
+    for mat in (order.get("materials_used") or []):
+        mid = mat.get("material_id")
+        qty = float(mat.get("quantity") or 0)
+        if not mid or qty <= 0:
+            continue
+        m = await db.materials.find_one({"id": mid})
+        if not m:
+            continue
+        new_stock = round((m.get("stock") or 0) - qty, 4)
+        await db.materials.update_one({"id": mid}, {"$set": {"stock": new_stock, "updated_at": utcnow_iso()}})
+        movements.append({
+            "material_id": mid, "name": m.get("name"),
+            "delta": -qty, "new_stock": new_stock, "at": utcnow_iso(),
+        })
+    await db.orders.update_one(
+        {"id": order["id"]},
+        {"$set": {"inventory_applied": True, "inventory_applied_at": utcnow_iso(),
+                  "inventory_applied_by": user_id, "inventory_movements": movements}},
+    )
+
+
+async def revert_inventory_decrement(order: dict, user_id: str):
+    """If an order leaves 'consegnato', revert stock changes."""
+    if not order.get("inventory_applied"):
+        return
+    for mv in (order.get("inventory_movements") or []):
+        await db.materials.update_one({"id": mv["material_id"]}, {"$inc": {"stock": -mv["delta"]}, "$set": {"updated_at": utcnow_iso()}})
+    await db.orders.update_one(
+        {"id": order["id"]},
+        {"$set": {"inventory_applied": False, "inventory_movements": [], "inventory_reverted_at": utcnow_iso()}},
+    )
+
+
+@api.get("/orders")
+async def orders_list(_: dict = Depends(require_perm("orders", "view"))):
+    items = await db.orders.find({}, {"_id": 0}).to_list(2000)
+    items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return items
+
+
+@api.get("/orders/{order_id}")
+async def orders_get(order_id: str, _: dict = Depends(require_perm("orders", "view"))):
+    o = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not o:
+        raise HTTPException(404, "Non trovato")
+    return o
+
+
+@api.post("/orders")
+async def orders_create(payload: Order, user: dict = Depends(require_perm("orders", "edit"))):
+    doc = payload.model_dump()
+    doc["id"] = gen_id()
+    doc["created_at"] = utcnow_iso()
+    doc["updated_at"] = doc["created_at"]
+    doc["created_by"] = user["id"]
+    doc["inventory_applied"] = False
+    doc["inventory_movements"] = []
+    await db.orders.insert_one(doc)
+    if doc.get("status") == "consegnato":
+        await apply_inventory_decrement(doc, user["id"])
+    doc.pop("_id", None)
+    out = await db.orders.find_one({"id": doc["id"]}, {"_id": 0})
+    return out
+
+
+@api.patch("/orders/{order_id}")
+async def orders_update(order_id: str, payload: dict, user: dict = Depends(require_perm("orders", "edit"))):
+    existing = await db.orders.find_one({"id": order_id})
+    if not existing:
+        raise HTTPException(404, "Non trovato")
+    payload.pop("id", None)
+    payload.pop("_id", None)
+    payload["updated_at"] = utcnow_iso()
+    payload["updated_by"] = user["id"]
+    await db.orders.update_one({"id": order_id}, {"$set": payload})
+    updated = await db.orders.find_one({"id": order_id})
+    old_status = existing.get("status")
+    new_status = updated.get("status")
+    if new_status == "consegnato" and old_status != "consegnato":
+        await apply_inventory_decrement(updated, user["id"])
+    elif old_status == "consegnato" and new_status != "consegnato":
+        await revert_inventory_decrement(updated, user["id"])
+    return await db.orders.find_one({"id": order_id}, {"_id": 0})
+
+
+@api.delete("/orders/{order_id}")
+async def orders_delete(order_id: str, user: dict = Depends(require_perm("orders", "delete"))):
+    existing = await db.orders.find_one({"id": order_id})
+    if not existing:
+        raise HTTPException(404, "Non trovato")
+    # If inventory was applied, revert before deleting
+    if existing.get("inventory_applied"):
+        await revert_inventory_decrement(existing, user["id"])
+    await db.orders.delete_one({"id": order_id})
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -852,6 +966,88 @@ async def customer_detail(customer_id: str, user: dict = Depends(require_perm("c
             "total_spent": round(total_spent, 2),
         },
     }
+
+
+# ---------------------------------------------------------------------------
+# TELEGRAM (admin only)
+# ---------------------------------------------------------------------------
+@api.get("/telegram/status")
+async def tg_status(_: dict = Depends(require_admin)):
+    info = {}
+    try:
+        info = await tg_get_me()
+    except Exception as e:
+        return {"configured": False, "error": str(e)}
+    cfg = await db.settings.find_one({"_id": "telegram"}) or {}
+    return {
+        "configured": True,
+        "bot": info.get("result"),
+        "chat_id": cfg.get("chat_id"),
+        "chat_title": cfg.get("chat_title"),
+        "daily_summary_enabled": cfg.get("daily_summary_enabled", True),
+        "schedule": f"{os.environ.get('NOTIFICATION_TIME','09:30')} {os.environ.get('NOTIFICATION_TIMEZONE','Europe/Rome')}",
+    }
+
+
+@api.get("/telegram/discover")
+async def tg_discover(_: dict = Depends(require_admin)):
+    chats = await tg_get_updates()
+    return {"chats": chats}
+
+
+class TelegramConfigBody(BaseModel):
+    chat_id: Optional[str] = None
+    chat_title: Optional[str] = None
+    daily_summary_enabled: Optional[bool] = None
+
+
+@api.patch("/telegram/config")
+async def tg_set_config(body: TelegramConfigBody, _: dict = Depends(require_admin)):
+    upd: Dict[str, Any] = {}
+    if body.chat_id is not None:
+        upd["chat_id"] = body.chat_id
+    if body.chat_title is not None:
+        upd["chat_title"] = body.chat_title
+    if body.daily_summary_enabled is not None:
+        upd["daily_summary_enabled"] = body.daily_summary_enabled
+    if not upd:
+        cfg = await db.settings.find_one({"_id": "telegram"}) or {}
+        return {k: v for k, v in cfg.items() if k != "_id"}
+    upd["updated_at"] = utcnow_iso()
+    await db.settings.update_one({"_id": "telegram"}, {"$set": upd}, upsert=True)
+    cfg = await db.settings.find_one({"_id": "telegram"})
+    return {k: v for k, v in (cfg or {}).items() if k != "_id"}
+
+
+@api.post("/telegram/test")
+async def tg_test(_: dict = Depends(require_admin)):
+    cfg = await db.settings.find_one({"_id": "telegram"}) or {}
+    chat_id = cfg.get("chat_id")
+    if not chat_id:
+        raise HTTPException(400, "chat_id non configurato")
+    text = ("✨ <b>Test notifica</b>\n"
+            "Se vedi questo messaggio, le notifiche del Gestionale "
+            "La Crafteria Nerd sono attive!\n\n"
+            "🐉 Buon lavoro in bottega!")
+    try:
+        await tg_send(chat_id, text)
+    except Exception as e:
+        raise HTTPException(500, f"Invio fallito: {e}")
+    return {"ok": True}
+
+
+@api.post("/telegram/send-summary-now")
+async def tg_send_now(_: dict = Depends(require_admin)):
+    cfg = await db.settings.find_one({"_id": "telegram"}) or {}
+    chat_id = cfg.get("chat_id")
+    if not chat_id:
+        raise HTTPException(400, "chat_id non configurato")
+    text = await build_daily_summary(db)
+    try:
+        await tg_send(chat_id, text)
+    except Exception as e:
+        raise HTTPException(500, f"Invio fallito: {e}")
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------

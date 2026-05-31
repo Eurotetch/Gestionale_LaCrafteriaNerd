@@ -4,7 +4,7 @@ import { NAV, AUTH } from "@/constants/testIds";
 import {
   LayoutDashboard, ClipboardList, Users, Package, Boxes,
   Receipt, Calendar as CalendarIcon, Wallet, BarChart3, ShieldCheck,
-  LogOut, Menu, X, Sparkles
+  LogOut, Menu, X, Sparkles, Settings as SettingsIcon
 } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { key: "calendar",  to: "/calendario", label: "Calendario", icon: CalendarIcon, module: "calendar" },
   { key: "reports",   to: "/report", label: "Report", icon: BarChart3, module: "reports" },
   { key: "users",     to: "/utenti", label: "Utenti & Permessi", icon: ShieldCheck, module: "users", adminOnly: true },
+  { key: "settings",  to: "/impostazioni", label: "Impostazioni", icon: SettingsIcon, module: "settings", adminOnly: true },
 ];
 
 export default function Layout({ children }) {
@@ -38,7 +39,7 @@ export default function Layout({ children }) {
       <header className="md:hidden flex items-center justify-between p-4 border-b border-border/60 bg-card/80 backdrop-blur sticky top-0 z-40">
         <div className="flex items-center gap-2">
           <img src="https://www.lacrafterianerd.com/img/site/Draghetto_logo.png" alt="logo" className="h-9 w-9" />
-          <span className="font-extrabold tracking-tight">Crafteria</span>
+          <span className="font-extrabold tracking-tight">La Crafteria Nerd</span>
         </div>
         <button onClick={() => setOpen(!open)} className="p-2 rounded-xl bg-muted" data-testid="mobile-menu-toggle">
           {open ? <X size={20}/> : <Menu size={20}/>}
@@ -62,9 +63,9 @@ export default function Layout({ children }) {
         >
           <img src="https://www.lacrafterianerd.com/img/site/Draghetto_logo.png" alt="Draghetto" className="h-12 w-12" />
           <div>
-            <div className="font-extrabold text-lg leading-none tracking-tight">La Crafteria</div>
+            <div className="font-extrabold text-lg leading-none tracking-tight">La Crafteria Nerd</div>
             <div className="text-xs text-muted-foreground flex items-center gap-1">
-              <Sparkles size={12} className="text-primary" /> Gestionale Nerd
+              <Sparkles size={12} className="text-primary" /> Gestionale
             </div>
           </div>
         </button>
