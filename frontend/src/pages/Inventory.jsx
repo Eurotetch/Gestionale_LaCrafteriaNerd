@@ -2,11 +2,12 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { INVENTORY } from "@/constants/testIds";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Plus, Edit2, Trash2, Search, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatEUR } from "@/lib/utils";
 import { toast } from "sonner";
+import NumberInput from "@/components/NumberInput";
 
 const empty = () => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "" });
 
@@ -107,7 +108,7 @@ export default function InventoryPage() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg rounded-3xl">
-          <DialogHeader><DialogTitle>{edit?.id ? "Modifica materiale" : "Nuovo materiale"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{edit?.id ? "Modifica materiale" : "Nuovo materiale"}</DialogTitle><DialogDescription className="sr-only">Dati del materiale</DialogDescription></DialogHeader>
           {edit && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <F label="Nome *"><input className="crafteria-input w-full" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })}/></F>
@@ -116,9 +117,9 @@ export default function InventoryPage() {
                   <option>pz</option><option>kg</option><option>g</option><option>m</option><option>cm</option><option>ml</option><option>l</option>
                 </select>
               </F>
-              <F label="Scorta"><input type="number" step="0.01" className="crafteria-input w-full" value={edit.stock} onChange={(e) => setEdit({ ...edit, stock: parseFloat(e.target.value || 0) })}/></F>
-              <F label="Soglia min."><input type="number" step="0.01" className="crafteria-input w-full" value={edit.min_stock} onChange={(e) => setEdit({ ...edit, min_stock: parseFloat(e.target.value || 0) })}/></F>
-              <F label="Costo unit. (€)"><input type="number" step="0.01" className="crafteria-input w-full" value={edit.unit_cost} onChange={(e) => setEdit({ ...edit, unit_cost: parseFloat(e.target.value || 0) })}/></F>
+              <F label="Scorta"><NumberInput value={edit.stock} onChange={(n) => setEdit({ ...edit, stock: n })} className="w-full"/></F>
+              <F label="Soglia min."><NumberInput value={edit.min_stock} onChange={(n) => setEdit({ ...edit, min_stock: n })} className="w-full"/></F>
+              <F label="Costo unit. (€)"><NumberInput value={edit.unit_cost} onChange={(n) => setEdit({ ...edit, unit_cost: n })} className="w-full"/></F>
               <F label="Fornitore"><input className="crafteria-input w-full" value={edit.supplier || ""} onChange={(e) => setEdit({ ...edit, supplier: e.target.value })}/></F>
               <div className="sm:col-span-2">
                 <F label="Note"><textarea rows={3} className="crafteria-input w-full" value={edit.notes || ""} onChange={(e) => setEdit({ ...edit, notes: e.target.value })}/></F>

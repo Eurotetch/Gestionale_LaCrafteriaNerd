@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError, API_BASE } from "@/lib/api";
-import { Send, RefreshCw, CheckCircle2, AlertTriangle, Bell, BellOff, Webhook, MessageSquare } from "lucide-react";
+import { Send, RefreshCw, CheckCircle2, AlertTriangle, Bell, BellOff, Webhook, MessageSquare, Trash } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SettingsPage() {
@@ -63,6 +63,16 @@ export default function SettingsPage() {
     mutationFn: async () => (await api.post("/telegram/delete-webhook")).data,
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["telegram-webhook-info"] }); toast.success("Comandi bot disattivati"); },
   });
+
+  const resetData = useMutation({
+    mutationFn: async () => (await api.post("/admin/reset-data", { confirm: "RESET" })).data,
+    onSuccess: () => {
+      toast.success("Dati operativi azzerati ✨");
+      qc.invalidateQueries();
+    },
+    onError: (e) => toast.error(formatApiError(e)),
+  });
+
 
   const webhookActive = !!webhookInfo?.result?.url;
 
@@ -262,6 +272,26 @@ export default function SettingsPage() {
             Bot non configurato. Imposta <code>TELEGRAM_BOT_TOKEN</code> nelle env.
           </div>
         )}
+      </div>
+      <div className="crafteria-card p-6 border-2 border-destructive/40 bg-destructive/5 space-y-3">
+        <h3 className="font-extrabold flex items-center gap-2 text-destructive">
+          <Trash size={16}/> Zona pericolosa — Reset dati operativi
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          <strong>Solo per test/sviluppo.</strong> Elimina TUTTE le voci di clienti, prodotti, materiali, ordini, fatture, calendario,
+          vendite, allegati e contatori. Mantiene gli utenti e le impostazioni Telegram.
+          <strong> L'operazione non è reversibile.</strong>
+        </p>
+        <button
+          onClick={() => {
+            const ok = window.prompt('Per confermare, scrivi "AZZERA TUTTO":');
+            if (ok === "AZZERA TUTTO") resetData.mutate();
+          }}
+          disabled={resetData.isPending}
+          data-testid="reset-data-btn"
+          className="rounded-2xl bg-destructive text-destructive-foreground font-semibold px-4 py-2.5 hover:brightness-105 disabled:opacity-50 inline-flex items-center gap-2">
+          <Trash size={14}/> {resetData.isPending ? "Eliminazione…" : "Azzera tutti i dati operativi"}
+        </button>
       </div>
     </div>
   );

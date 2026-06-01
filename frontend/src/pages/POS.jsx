@@ -7,11 +7,13 @@ import { useAuth } from "@/context/AuthContext";
 import { formatEUR, TECHNIQUES, techMeta } from "@/lib/utils";
 import { toast } from "sonner";
 import { printReceipt } from "@/lib/receiptPrint";
+import NumberInput from "@/components/NumberInput";
 
 const PAYMENT_METHODS = [
   { value: "contanti", label: "💵 Contanti" },
-  { value: "carta",    label: "💳 Carta" },
+  { value: "carta",    label: "💳 Carta/POS" },
   { value: "bonifico", label: "🏦 Bonifico" },
+  { value: "paypal",   label: "🅿️ PayPal" },
   { value: "altro",    label: "✨ Altro" },
 ];
 
@@ -164,7 +166,7 @@ export default function POSPage() {
           <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotale</span><span className="font-semibold">{formatEUR(subtotal)}</span></div>
           <div className="flex justify-between items-center text-sm">
             <span className="text-muted-foreground">Sconto (€)</span>
-            <input type="number" step="0.01" min="0" value={discount} onChange={(e) => setDiscount(parseFloat(e.target.value || 0))} className="crafteria-input w-24 text-right py-1"/>
+            <div className="w-24"><NumberInput value={discount} onChange={(n) => setDiscount(n)} min="0" className="text-right py-1"/></div>
           </div>
           <div className="flex justify-between items-baseline pt-1 border-t border-border/50">
             <span className="font-bold">TOTALE</span>
@@ -225,8 +227,8 @@ function CustomItemRow({ onAdd, qty, setQty }) {
     <div className="crafteria-card p-4 flex flex-wrap gap-2 items-center">
       <span className="text-sm font-semibold mr-1">+ Voce libera:</span>
       <input className="crafteria-input flex-1 min-w-[160px]" placeholder="Descrizione" value={name} onChange={(e) => setName(e.target.value)} data-testid="pos-custom-name"/>
-      <input type="number" step="0.01" className="crafteria-input w-24" placeholder="Prezzo" value={price} onChange={(e) => setPrice(e.target.value)} data-testid="pos-custom-price"/>
-      <input type="number" min="1" className="crafteria-input w-20" placeholder="Qty" value={qty} onChange={(e) => setQty(parseInt(e.target.value || 1))}/>
+      <div className="w-24"><NumberInput value={parseFloat(price) || 0} onChange={(n) => setPrice(String(n))} placeholder="Prezzo"/></div>
+      <div className="w-20"><NumberInput value={qty} onChange={(n) => setQty(n)} step="1" min="1" placeholder="Qty"/></div>
       <button onClick={() => { onAdd(name, price); setName(""); setPrice(""); }}
               className="crafteria-btn-primary" data-testid="pos-custom-add">Aggiungi</button>
     </div>

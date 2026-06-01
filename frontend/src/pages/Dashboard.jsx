@@ -1,10 +1,12 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import api from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { DASHBOARD } from "@/constants/testIds";
-import { Wallet, ClipboardList, Boxes, Users, Calendar as CalendarIcon, Sparkles, AlertTriangle, Clock } from "lucide-react";
+import { Wallet, ClipboardList, Boxes, Users, Calendar as CalendarIcon, Sparkles, AlertTriangle, Clock, ShoppingBag } from "lucide-react";
 import { formatEUR, formatDate } from "@/lib/utils";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import SalesListDialog from "@/components/SalesListDialog";
 
 const STATUS_META = {
   nuovo:           { label: "Nuovi",          color: "bg-secondary/20 text-secondary" },
@@ -32,11 +34,16 @@ function AlertCard({ tone, icon: Icon, title, count, link, testId, children }) {
   );
 }
 
-
-function StatCard({ icon: Icon, label, value, hint, color, testId }) {
+function StatCard({ icon: Icon, label, value, hint, color, testId, onClick }) {
+  const Tag = onClick ? "button" : "div";
   return (
-    <div data-testid={testId} className="crafteria-card p-6 flex items-start gap-4 hover:-translate-y-0.5 transition-all">
-      <div className={`h-12 w-12 rounded-2xl grid place-items-center ${color}`}>
+    <Tag
+      data-testid={testId}
+      onClick={onClick}
+      className={`text-left crafteria-card p-6 flex items-start gap-4 transition-all w-full ${
+        onClick ? "hover:-translate-y-0.5 hover:ring-2 hover:ring-primary/30 cursor-pointer" : ""
+      }`}>
+      <div className={`h-12 w-12 rounded-2xl grid place-items-center shrink-0 ${color}`}>
         <Icon size={22}/>
       </div>
       <div className="min-w-0 flex-1">
@@ -44,12 +51,15 @@ function StatCard({ icon: Icon, label, value, hint, color, testId }) {
         <div className="text-2xl sm:text-3xl font-extrabold tracking-tight mt-0.5">{value}</div>
         {hint && <div className="text-xs text-muted-foreground mt-1">{hint}</div>}
       </div>
-    </div>
+    </Tag>
   );
 }
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const navigate = useNavigate();
+  const [salesPeriod, setSalesPeriod] = useState(null);  // null | "today" | "month" | "all"
+
   const { data, isLoading } = useQuery({
     queryKey: ["dashboard"],
     queryFn: async () => (await api.get("/dashboard/stats")).data,
@@ -58,26 +68,26 @@ export default function Dashboard() {
 
   const stats = data || {};
   const orders = stats.orders_by_status || {};
+  const activeOrders = (orders.nuovo || 0) + (orders.in_lavorazione || 0) + (orders.pronto || 0);
+
+  const periodTitles = {
+    today: "Vendite di oggi",
+    month: "Vendite del mese",
+    all: "Tutte le vendite",
+  };
 
   return (
     <div data-testid={DASHBOARD.root} className="space-y-8">
       {/* Hero greeting */}
       <div className="flex items-end gap-4 sm:gap-6">
-        <img
-          src="https://www.lacrafterianerd.com/img/site/Lala.png"
-          alt="Lala"
-          className="h-20 sm:h-24 hidden sm:block drop-shadow"
-        />
+        <img src="https://www.lacrafterianerd.com/img/site/Lala.png" alt="Lala"
+             className="h-20 sm:h-24 hidden sm:block drop-shadow"/>
         <div className="flex-1">
           <div className="text-sm uppercase tracking-widest text-primary font-bold flex items-center gap-1.5">
             <Sparkles size={14}/> dashboard
           </div>
-          <h1 className="text-3xl sm:text-5xl">
-            Ciao {user?.name?.split(" ")[0] || "Lala"}! 💛
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Ecco cosa sta succedendo oggi in bottega — aggiornato in tempo reale.
-          </p>
+          <h1 className="text-3xl sm:text-5xl">Ciao {user?.name?.split(" ")[0] || "Lala"}! 💛</h1>
+          <p className="text-muted-foreground mt-1">Aggiornato in tempo reale ogni 3 secondi.</p>
         </div>
       </div>
 
@@ -112,54 +122,59 @@ export default function Dashboard() {
       )}
 
       {/* Stats grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+        <StatCard
+          testId={DASHBOARD.revenueToday}
+          icon={Wallet} label="Incasso oggi"
+          value={isLoading ? "…" : formatEUR(stats.revenue_today || 0)}
+          hint={`${stats.sales_count_today || 0} vendite oggi — clicca per dettaglio`}
+          color="bg-primary/20 text-primary-foreground"
+          onClick={() => setSalesPeriod("today")}
+        />
         <StatCard
           testId={DASHBOARD.revenueMonth}
           icon={Wallet} label="Incasso del mese"
           value={isLoading ? "…" : formatEUR(stats.revenue_month || 0)}
-          hint={`In totale questo mese`}
+          hint="Clicca per vedere il dettaglio"
           color="bg-accent/15 text-accent"
+          onClick={() => setSalesPeriod("month")}
         />
-        <div data-testid={DASHBOARD.revenueToday}>
-          <StatCard
-            icon={Wallet} label="Incasso oggi"
-            value={isLoading ? "…" : formatEUR(stats.revenue_today || 0)}
-            hint={`${stats.sales_count_today || 0} vendite alla cassa oggi`}
-            color="bg-primary/20 text-primary-foreground"
-          />
-        </div>
+        <StatCard
+          testId="stat-sales-total"
+          icon={ShoppingBag} label="Vendite totali"
+          value={isLoading ? "…" : (stats.sales_count_total ?? 0)}
+          hint="Storia completa cassa"
+          color="bg-secondary/20 text-secondary"
+          onClick={() => setSalesPeriod("all")}
+        />
         <StatCard
           testId={DASHBOARD.ordersTotal}
-          icon={ClipboardList} label="Ordini totali"
-          value={isLoading ? "…" : stats.orders_total || 0}
-          hint={`In lavorazione: ${orders.in_lavorazione || 0} • Pronti: ${orders.pronto || 0}`}
+          icon={ClipboardList} label="Commesse aperte"
+          value={isLoading ? "…" : activeOrders}
+          hint={`Totali a sistema: ${stats.orders_total || 0}`}
           color="bg-primary/20 text-primary-foreground"
+          onClick={() => navigate("/ordini")}
         />
         <StatCard
           testId={DASHBOARD.lowStock}
-          icon={Boxes} label="Materiali in esaurimento"
-          value={isLoading ? "…" : stats.low_stock_count || 0}
-          hint="Sotto la soglia minima"
+          icon={Boxes} label="Materiali sotto soglia"
+          value={isLoading ? "…" : (stats.low_stock_count || 0)}
+          hint="Clicca per il magazzino"
           color="bg-destructive/10 text-destructive"
-        />
-        <StatCard
-          icon={Users} label="Clienti registrati"
-          value={isLoading ? "…" : stats.customers_count || 0}
-          hint="In anagrafica"
-          color="bg-secondary/20 text-secondary"
+          onClick={() => navigate("/magazzino")}
         />
       </div>
 
       {/* Two-column: Orders breakdown + Upcoming */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="crafteria-card p-6 lg:col-span-2">
-          <h2 className="text-xl mb-4">📋 Stato degli ordini</h2>
+          <h2 className="text-xl mb-4">📋 Stato delle commesse</h2>
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
             {Object.entries(STATUS_META).map(([k, m]) => (
-              <div key={k} className={`rounded-2xl p-4 ${m.color}`}>
+              <Link key={k} to="/ordini" className={`rounded-2xl p-4 ${m.color} hover:brightness-95 block`}>
                 <div className="text-3xl font-extrabold">{orders[k] || 0}</div>
                 <div className="text-xs font-medium mt-1">{m.label}</div>
-              </div>
+              </Link>
             ))}
           </div>
 
@@ -170,9 +185,7 @@ export default function Dashboard() {
                 {stats.low_stock_items.map((m) => (
                   <li key={m.id} className="flex justify-between text-sm">
                     <span>{m.name}</span>
-                    <span className="text-destructive font-semibold">
-                      {m.stock} / min {m.min_stock} {m.unit}
-                    </span>
+                    <span className="text-destructive font-semibold">{m.stock} / min {m.min_stock} {m.unit}</span>
                   </li>
                 ))}
               </ul>
@@ -197,8 +210,18 @@ export default function Dashboard() {
               ))}
             </ul>
           )}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-4">
+            <Users size={12}/> {stats.customers_count || 0} clienti in anagrafica
+          </div>
         </div>
       </div>
+
+      <SalesListDialog
+        open={!!salesPeriod}
+        onOpenChange={(v) => !v && setSalesPeriod(null)}
+        period={salesPeriod || "all"}
+        title={periodTitles[salesPeriod] || "Vendite"}
+      />
     </div>
   );
 }

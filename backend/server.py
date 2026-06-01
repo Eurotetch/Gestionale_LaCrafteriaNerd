@@ -14,6 +14,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 import uuid
 
+import pytz
 import bcrypt
 import jwt
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Query, UploadFile, File, Header, Response
@@ -212,6 +213,7 @@ class Product(BaseModel):
     name: str
     description: Optional[str] = None
     technique: str = "3D"  # 3D, Ricamo, Laser, UV, Tufting, Altro
+    category: str = ""  # nuova categoria libera
     price: float = 0.0
     cost: float = 0.0
     sku: Optional[str] = None
@@ -730,9 +732,21 @@ async def orders_convert(
 # POS / Sales
 # ---------------------------------------------------------------------------
 @api.get("/sales")
-async def list_sales(user: dict = Depends(require_perm("pos", "view")),
-                     limit: int = 200):
-    items = await db.sales.find({}, {"_id": 0}).to_list(limit)
+async def list_sales(
+    user: dict = Depends(require_perm("pos", "view")),
+    period: str = Query("all", regex="^(today|month|all)$"),
+    limit: int = 1000,
+):
+    tz = pytz.timezone(os.environ.get("NOTIFICATION_TIMEZONE", "Europe/Rome"))
+    now_local = datetime.now(tz)
+    q: Dict[str, Any] = {}
+    if period == "today":
+        today = now_local.date().isoformat()
+        q["created_at"] = {"$gte": today}
+    elif period == "month":
+        prefix = now_local.strftime("%Y-%m")
+        q["created_at"] = {"$gte": prefix}
+    items = await db.sales.find(q, {"_id": 0}).to_list(limit)
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return items
 
@@ -740,7 +754,6 @@ async def list_sales(user: dict = Depends(require_perm("pos", "view")),
 @api.post("/sales")
 async def create_sale(payload: Sale, user: dict = Depends(require_perm("pos", "edit"))):
     doc = payload.model_dump()
-    # auto compute totals server-side as safety
     subtotal = sum((it.get("price", 0) or 0) * (it.get("quantity", 0) or 0) for it in doc["items"])
     doc["subtotal"] = round(subtotal, 2)
     doc["total"] = round(subtotal - (doc.get("discount") or 0), 2)
@@ -748,9 +761,27 @@ async def create_sale(payload: Sale, user: dict = Depends(require_perm("pos", "e
     doc["created_at"] = utcnow_iso()
     doc["created_by"] = user["id"]
     doc["operator_name"] = user.get("name")
+    doc["is_returned"] = False
     await db.sales.insert_one(doc)
     doc.pop("_id", None)
     return doc
+
+
+@api.patch("/sales/{sale_id}")
+async def patch_sale(sale_id: str, payload: dict, user: dict = Depends(require_perm("pos", "edit"))):
+    existing = await db.sales.find_one({"id": sale_id})
+    if not existing:
+        raise HTTPException(404, "Vendita non trovata")
+    allowed = {k: v for k, v in payload.items() if k in ("is_returned", "notes", "payment_method")}
+    if not allowed:
+        return {k: v for k, v in existing.items() if k != "_id"}
+    allowed["updated_at"] = utcnow_iso()
+    allowed["updated_by"] = user["id"]
+    if "is_returned" in allowed:
+        allowed["returned_at"] = utcnow_iso() if allowed["is_returned"] else None
+    await db.sales.update_one({"id": sale_id}, {"$set": allowed})
+    out = await db.sales.find_one({"id": sale_id}, {"_id": 0})
+    return out
 
 
 @api.delete("/sales/{sale_id}")
@@ -786,11 +817,12 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
     overdue_invoices = [i for i in invoices if i.get("status") not in ("pagato", "bozza")
                         and i.get("due_date") and i["due_date"] < today]
 
-    # Sales
-    sales = await db.sales.find({}, {"_id": 0}).to_list(2000)
+    # Sales (exclude returned)
+    sales = await db.sales.find({"is_returned": {"$ne": True}}, {"_id": 0}).to_list(2000)
     revenue_month = sum(s.get("total", 0) for s in sales if (s.get("created_at") or "").startswith(month_prefix))
     revenue_today = sum(s.get("total", 0) for s in sales if (s.get("created_at") or "").startswith(today))
     sales_count_today = sum(1 for s in sales if (s.get("created_at") or "").startswith(today))
+    sales_count_total = len(sales)
 
     # Low stock
     materials = await db.materials.find({}, {"_id": 0}).to_list(2000)
@@ -807,6 +839,7 @@ async def dashboard_stats(user: dict = Depends(get_current_user)):
         "revenue_month": round(revenue_month, 2),
         "revenue_today": round(revenue_today, 2),
         "sales_count_today": sales_count_today,
+        "sales_count_total": sales_count_total,
         "low_stock_count": len(low_stock),
         "low_stock_items": low_stock[:5],
         "customers_count": customers_count,
@@ -991,6 +1024,66 @@ async def invoice_next_number(kind: str = Query("preventivo"), _: dict = Depends
     key = f"{prefix}-{year}"
     n = await next_counter(key)
     return {"number": f"{prefix}-{year}-{n:04d}"}
+
+
+# ---------------------------------------------------------------------------
+# PRODUCT EXTRAS — categories + SKU generator
+# ---------------------------------------------------------------------------
+@api.get("/products/categories")
+async def list_product_categories(_: dict = Depends(require_perm("products", "view"))):
+    """Distinct categories used in products (alphabetical)."""
+    cats = await db.products.distinct("category")
+    cats = sorted({c for c in cats if isinstance(c, str) and c.strip()})
+    return {"categories": cats}
+
+
+def _sku_prefix_from_text(text: str) -> str:
+    """Generate a 5-letter uppercase prefix from text (drop vowels except first, then take first 5)."""
+    s = "".join(ch for ch in (text or "").upper() if ch.isalpha())
+    if not s:
+        return "PROD0"
+    head = s[0]
+    rest = "".join(ch for ch in s[1:] if ch not in "AEIOU")
+    candidate = (head + rest) if len(head + rest) >= 5 else (head + rest + s[1:])
+    candidate = candidate.replace(" ", "")
+    candidate = (candidate + "XXXXX")[:5]
+    return candidate.upper()
+
+
+@api.post("/products/next-sku")
+async def next_product_sku(
+    category: str = Query(..., min_length=1),
+    _: dict = Depends(require_perm("products", "edit")),
+):
+    prefix = _sku_prefix_from_text(category)
+    key = f"sku_{prefix}"
+    n = await next_counter(key)
+    return {"sku": f"{prefix}{n:05d}", "prefix": prefix, "next_number": n}
+
+
+# ---------------------------------------------------------------------------
+# ADMIN: reset data (DANGEROUS — keeps users only)
+# ---------------------------------------------------------------------------
+@api.post("/admin/reset-data")
+async def reset_data(payload: dict, _: dict = Depends(require_admin)):
+    """Wipe operational collections. Required body: {confirm: 'RESET'}.
+    Optional: keep=[<collection>, ...] to preserve specific data.
+    """
+    if (payload or {}).get("confirm") != "RESET":
+        raise HTTPException(400, "Conferma mancante (confirm:RESET)")
+    keep = set((payload or {}).get("keep") or [])
+    targets = [
+        "customers", "products", "materials", "orders",
+        "invoices", "calendar_events", "sales", "files", "counters",
+    ]
+    summary = {}
+    for c in targets:
+        if c in keep:
+            summary[c] = "kept"
+            continue
+        res = await db[c].delete_many({})
+        summary[c] = res.deleted_count
+    return {"ok": True, "deleted": summary}
 
 
 # ---------------------------------------------------------------------------

@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { DragDropContext, Droppable, Draggable } from "@hello-pangea/dnd";
 import Attachments from "@/components/Attachments";
 import { FileText, Receipt } from "lucide-react";
+import NumberInput from "@/components/NumberInput";
 
 const COLUMNS = STATUS_OPTIONS.filter((s) => s.value !== "annullato");
 
@@ -272,8 +273,8 @@ function OrderDialog({ open, onOpenChange, value, onChange, onSave, customers, m
               {STATUS_OPTIONS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </Field>
-          <Field label="Totale (€)"><input type="number" step="0.01" className="crafteria-input w-full" value={value.total} onChange={(e) => set("total", parseFloat(e.target.value || 0))}/></Field>
-          <Field label="Acconto (€)"><input type="number" step="0.01" className="crafteria-input w-full" value={value.deposit} onChange={(e) => set("deposit", parseFloat(e.target.value || 0))}/></Field>
+          <Field label="Totale (€)"><NumberInput value={value.total} onChange={(n) => set("total", n)} className="w-full"/></Field>
+          <Field label="Acconto (€)"><NumberInput value={value.deposit} onChange={(n) => set("deposit", n)} className="w-full"/></Field>
           <Field label="Scadenza"><input type="date" className="crafteria-input w-full" value={value.due_date || ""} onChange={(e) => set("due_date", e.target.value)}/></Field>
           <Field label="Priorità">
             <select className="crafteria-input w-full" value={value.priority} onChange={(e) => set("priority", e.target.value)}>
@@ -304,15 +305,15 @@ function OrderDialog({ open, onOpenChange, value, onChange, onSave, customers, m
           </div>
           {(value.materials_used || []).length > 0 && (
             <div className="space-y-1.5 rounded-2xl bg-muted/30 p-2">
-              {value.materials_used.map((m, i) => (
-                <div key={i} className="grid grid-cols-12 gap-1.5 items-center text-sm">
-                  <input className="crafteria-input col-span-5 py-1" placeholder="Materiale" value={m.name} onChange={(e) => setMaterial(i, "name", e.target.value)}/>
-                  <input type="number" step="0.01" className="crafteria-input col-span-2 py-1" placeholder="Qty" value={m.quantity} onChange={(e) => setMaterial(i, "quantity", parseFloat(e.target.value || 0))}/>
-                  <input className="crafteria-input col-span-1 py-1" placeholder="u." value={m.unit} onChange={(e) => setMaterial(i, "unit", e.target.value)}/>
-                  <input type="number" step="0.01" className="crafteria-input col-span-3 py-1" placeholder="Costo unit." value={m.unit_cost} onChange={(e) => setMaterial(i, "unit_cost", parseFloat(e.target.value || 0))}/>
-                  <button onClick={() => rmMaterial(i)} className="col-span-1 text-destructive">×</button>
-                </div>
-              ))}
+                  {edit.materials_used.map((m, i) => (
+                  <div key={i} className="grid grid-cols-12 gap-1.5 items-center text-sm">
+                    <input className="crafteria-input col-span-5 py-1" placeholder="Materiale" value={m.name} onChange={(e) => setMaterial(i, "name", e.target.value)}/>
+                    <div className="col-span-2"><NumberInput value={m.quantity} onChange={(n) => setMaterial(i, "quantity", n)} placeholder="Qty" className="py-1"/></div>
+                    <input className="crafteria-input col-span-1 py-1" placeholder="u." value={m.unit} onChange={(e) => setMaterial(i, "unit", e.target.value)}/>
+                    <div className="col-span-3"><NumberInput value={m.unit_cost} onChange={(n) => setMaterial(i, "unit_cost", n)} placeholder="Costo unit." className="py-1"/></div>
+                    <button onClick={() => rmMaterial(i)} className="col-span-1 text-destructive">×</button>
+                  </div>
+                ))}
             </div>
           )}
           <div className="grid grid-cols-3 gap-2 mt-2 text-sm">

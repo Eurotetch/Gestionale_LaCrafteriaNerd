@@ -8,6 +8,7 @@ import { useAuth } from "@/context/AuthContext";
 import { formatEUR, formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 import { exportInvoicePDF } from "@/lib/pdfExport";
+import NumberInput from "@/components/NumberInput";
 
 const KINDS = [
   { value: "preventivo", label: "📝 Preventivo" },
@@ -188,8 +189,8 @@ export default function InvoicesPage() {
                   {edit.items.map((it, i) => (
                     <div key={i} className="grid grid-cols-12 gap-2 items-center">
                       <input className="crafteria-input col-span-6" placeholder="Descrizione" value={it.name} onChange={(e) => setItem(i, "name", e.target.value)}/>
-                      <input type="number" step="0.01" className="crafteria-input col-span-2" placeholder="Qty" value={it.quantity} onChange={(e) => setItem(i, "quantity", parseFloat(e.target.value || 0))}/>
-                      <input type="number" step="0.01" className="crafteria-input col-span-3" placeholder="Prezzo" value={it.price} onChange={(e) => setItem(i, "price", parseFloat(e.target.value || 0))}/>
+                      <div className="col-span-2"><NumberInput value={it.quantity} onChange={(n) => setItem(i, "quantity", n)} placeholder="Qty"/></div>
+                      <div className="col-span-3"><NumberInput value={it.price} onChange={(n) => setItem(i, "price", n)} placeholder="Prezzo"/></div>
                       <button onClick={() => rmItem(i)} className="col-span-1 text-destructive">×</button>
                     </div>
                   ))}
@@ -197,7 +198,7 @@ export default function InvoicesPage() {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4">
-                <F label="IVA %"><input type="number" className="crafteria-input w-full" value={edit.vat_rate} onChange={(e) => setEdit({ ...edit, vat_rate: parseFloat(e.target.value || 0) })}/></F>
+                <F label="IVA %"><NumberInput value={edit.vat_rate} onChange={(n) => setEdit({ ...edit, vat_rate: n })} step="1"/></F>
                 <div className="sm:col-span-2 flex items-end justify-end gap-6 text-sm">
                   <div><div className="text-muted-foreground">Imponibile</div><div className="font-bold">{formatEUR(livePreview?.sub || 0)}</div></div>
                   <div><div className="text-muted-foreground">Totale</div><div className="text-xl font-extrabold text-accent">{formatEUR(livePreview?.total || 0)}</div></div>
