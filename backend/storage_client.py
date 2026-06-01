@@ -1,80 +1,97 @@
 """
-Object storage wrapper for Emergent managed storage.
-Stores file metadata in MongoDB; objects in Emergent storage.
+Object storage wrapper — Cloudflare R2 (S3-compatible) or local fallback.
+
+R2 setup:
+  R2_ACCOUNT_ID=...                    # da Cloudflare → R2 → Overview
+  R2_ACCESS_KEY_ID=...                 # da Manage R2 API Tokens
+  R2_SECRET_ACCESS_KEY=...             # da Manage R2 API Tokens
+  R2_BUCKET=gestionale-crafteria
+  R2_PUBLIC_URL=https://cdn.lacrafterianerd.com   # opzionale: public URL/CDN
 """
 import os
-import time
 import logging
-import requests
+from typing import Tuple
 
 logger = logging.getLogger("crafteria.storage")
 
-STORAGE_URL = "https://integrations.emergentagent.com/objstore/api/v1/storage"
-EMERGENT_KEY = os.environ.get("EMERGENT_LLM_KEY")
+R2_ACCOUNT_ID = os.environ.get("R2_ACCOUNT_ID", "")
+R2_ACCESS_KEY = os.environ.get("R2_ACCESS_KEY_ID", "")
+R2_SECRET_KEY = os.environ.get("R2_SECRET_ACCESS_KEY", "")
+R2_BUCKET = os.environ.get("R2_BUCKET", "gestionale-crafteria")
+R2_PUBLIC_URL = os.environ.get("R2_PUBLIC_URL", "").rstrip("/")
 APP_NAME = os.environ.get("APP_NAME", "lacrafterianerd")
 
-_storage_key: str | None = None
+_client = None
 
 
-def init_storage() -> str | None:
-    global _storage_key
-    if _storage_key:
-        return _storage_key
-    if not EMERGENT_KEY:
-        logger.warning("EMERGENT_LLM_KEY not set — object storage disabled")
+def _r2_enabled() -> bool:
+    return bool(R2_ACCOUNT_ID and R2_ACCESS_KEY and R2_SECRET_KEY)
+
+
+def _client_init():
+    global _client
+    if _client is not None:
+        return _client
+    if not _r2_enabled():
         return None
     try:
-        r = requests.post(f"{STORAGE_URL}/init", json={"emergent_key": EMERGENT_KEY}, timeout=30)
-        r.raise_for_status()
-        _storage_key = r.json()["storage_key"]
-        logger.info("Object storage initialized")
-        return _storage_key
+        import boto3
+        from botocore.config import Config
+        _client = boto3.client(
+            "s3",
+            endpoint_url=f"https://{R2_ACCOUNT_ID}.r2.cloudflarestorage.com",
+            aws_access_key_id=R2_ACCESS_KEY,
+            aws_secret_access_key=R2_SECRET_KEY,
+            region_name="auto",
+            config=Config(signature_version="s3v4", retries={"max_attempts": 3}),
+        )
+        logger.info("Cloudflare R2 storage initialized")
     except Exception as e:
-        logger.error(f"Object storage init failed: {e}")
-        return None
+        logger.error(f"R2 init failed: {e}")
+        _client = None
+    return _client
+
+
+def init_storage():
+    return _client_init()
 
 
 def put_object(path: str, data: bytes, content_type: str) -> dict:
-    key = init_storage()
-    if not key:
-        raise RuntimeError("Storage non disponibile")
-    for attempt in range(3):
-        r = requests.put(
-            f"{STORAGE_URL}/objects/{path}",
-            headers={"X-Storage-Key": key, "Content-Type": content_type},
-            data=data, timeout=120,
-        )
-        if r.status_code == 403:
-            # re-init and retry
-            globals()["_storage_key"] = None
-            init_storage()
-            continue
-        if r.status_code == 429:
-            time.sleep(2 ** attempt)
-            continue
-        r.raise_for_status()
-        return r.json()
-    raise RuntimeError("Upload fallito dopo retry")
-
-
-def get_object(path: str) -> tuple[bytes, str]:
-    key = init_storage()
-    if not key:
-        raise RuntimeError("Storage non disponibile")
-    r = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60,
+    client = _client_init()
+    if not client:
+        raise RuntimeError("Storage non configurato (mancano R2_* env vars)")
+    client.put_object(
+        Bucket=R2_BUCKET, Key=path, Body=data,
+        ContentType=content_type,
+        CacheControl="public, max-age=31536000",
     )
-    if r.status_code == 403:
-        globals()["_storage_key"] = None
-        init_storage()
-        r = requests.get(
-            f"{STORAGE_URL}/objects/{path}",
-            headers={"X-Storage-Key": init_storage()}, timeout=60,
-        )
-    r.raise_for_status()
-    return r.content, r.headers.get("Content-Type", "application/octet-stream")
+    return {"path": path, "size": len(data)}
+
+
+def get_object(path: str) -> Tuple[bytes, str]:
+    client = _client_init()
+    if not client:
+        raise RuntimeError("Storage non configurato")
+    resp = client.get_object(Bucket=R2_BUCKET, Key=path)
+    return resp["Body"].read(), resp.get("ContentType", "application/octet-stream")
+
+
+def delete_object(path: str) -> None:
+    client = _client_init()
+    if not client:
+        return
+    try:
+        client.delete_object(Bucket=R2_BUCKET, Key=path)
+    except Exception as e:
+        logger.warning(f"R2 delete failed for {path}: {e}")
 
 
 def build_path(user_id: str, ext: str, file_id: str) -> str:
     return f"{APP_NAME}/uploads/{user_id}/{file_id}.{ext}"
+
+
+def public_url_for(path: str) -> str:
+    """Se è configurato R2_PUBLIC_URL, restituisce il link diretto senza autenticazione."""
+    if R2_PUBLIC_URL:
+        return f"{R2_PUBLIC_URL}/{path}"
+    return ""
