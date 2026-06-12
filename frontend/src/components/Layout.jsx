@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { NAV, AUTH } from "@/constants/testIds";
 import {
@@ -6,7 +6,7 @@ import {
   Receipt, Calendar as CalendarIcon, Wallet, BarChart3, ShieldCheck,
   LogOut, Menu, X, Sparkles, Settings as SettingsIcon
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
@@ -26,7 +26,23 @@ const NAV_ITEMS = [
 export default function Layout({ children }) {
   const { user, logout, can } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [open, setOpen] = useState(false);
+
+  // Telegram WebApp: tasto Indietro del telefono -> torna alla Dashboard
+  // invece di chiudere la mini-app; dalla Dashboard chiude direttamente.
+  useEffect(() => {
+    const tg = window.Telegram?.WebApp;
+    if (!tg?.BackButton) return;
+    if (location.pathname === "/") {
+      tg.BackButton.hide();
+    } else {
+      tg.BackButton.show();
+    }
+    const goHome = () => navigate("/");
+    tg.BackButton.onClick(goHome);
+    return () => tg.BackButton.offClick(goHome);
+  }, [location.pathname, navigate]);
 
   const visible = NAV_ITEMS.filter((it) => {
     if (it.adminOnly) return user?.role === "admin";

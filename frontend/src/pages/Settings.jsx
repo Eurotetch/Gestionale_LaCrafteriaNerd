@@ -232,8 +232,8 @@ export default function SettingsPage() {
                 <code className="bg-muted px-1 mx-1 rounded">/riassunto</code>,
                 <code className="bg-muted px-1 mx-1 rounded">/help</code>.
                 <br/>
-                <span className="text-xs">
-                  Nei gruppi scrivi i comandi con la menzione del bot, es. <code>/scadenze@gestionale_lacrafterianerd_bot</code>.
+                <span className="text-xs break-words">
+                  Nei gruppi scrivi i comandi con la menzione del bot, es. <code className="break-all">/scadenze@gestionale_lacrafterianerd_bot</code>.
                 </span>
               </p>
               <div className={`rounded-2xl p-3 ${webhookActive ? "bg-accent/10 border border-accent/30" : "bg-muted/40 border border-border"}`}>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { INVENTORY } from "@/constants/testIds";
@@ -81,10 +81,20 @@ export default function InventoryPage() {
                   <tr key={m.id} className="border-t border-border hover:bg-muted/30 transition-colors">
                     <td className="px-5 py-3 font-semibold">{m.name}</td>
                     <td className="px-5 py-3">
-                      <span className={`inline-flex items-center gap-1.5 font-bold ${low ? "text-destructive" : ""}`}>
-                        {low && <AlertTriangle size={14}/>}
-                        {m.stock} {m.unit}
-                      </span>
+                      {can("inventory", "edit") ? (
+                        <div className="flex items-center gap-1.5">
+                          {low && <AlertTriangle size={14} className="text-destructive shrink-0"/>}
+                          <div className="w-20">
+                            <StockInput material={m} onSave={(n) => save.mutate({ ...m, stock: n })}/>
+                          </div>
+                          <span className="text-muted-foreground">{m.unit}</span>
+                        </div>
+                      ) : (
+                        <span className={`inline-flex items-center gap-1.5 font-bold ${low ? "text-destructive" : ""}`}>
+                          {low && <AlertTriangle size={14}/>}
+                          {m.stock} {m.unit}
+                        </span>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-muted-foreground">{m.min_stock} {m.unit}</td>
                     <td className="px-5 py-3 text-muted-foreground">{formatEUR(m.unit_cost)}</td>
@@ -138,3 +148,18 @@ export default function InventoryPage() {
 const F = ({ label, children }) => (
   <label className="block text-sm"><span className="block font-semibold mb-1">{label}</span>{children}</label>
 );
+
+function StockInput({ material, onSave }) {
+  const [value, setValue] = useState(material.stock);
+  useEffect(() => setValue(material.stock), [material.stock]);
+  return (
+    <NumberInput
+      value={value}
+      onChange={setValue}
+      onBlur={() => { if (value !== material.stock) onSave(value); }}
+      step="1"
+      className="text-right py-1"
+      data-testid={`stock-input-${material.id}`}
+    />
+  );
+}

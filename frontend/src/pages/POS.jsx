@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { POS } from "@/constants/testIds";
-import { Plus, Minus, Trash2, ShoppingCart, Package, Printer } from "lucide-react";
+import { Plus, Minus, Trash2, ShoppingCart, Package, Printer, Pencil } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatEUR, TECHNIQUES, techMeta } from "@/lib/utils";
 import { toast } from "sonner";
@@ -65,9 +65,10 @@ export default function POSPage() {
   };
   const updateQty = (i, delta) => setCart((c) => c.map((it, idx) => idx === i ? { ...it, quantity: Math.max(0, it.quantity + delta) } : it).filter((it) => it.quantity > 0));
   const removeItem = (i) => setCart((c) => c.filter((_, idx) => idx !== i));
+  const updateCartItem = (i, field, value) => setCart((c) => c.map((it, idx) => idx === i ? { ...it, [field]: value } : it));
   const addCustom = (name, price) => {
     if (!name.trim()) {
-      toast.error("Inserisci una descrizione per la voce libera");
+      toast.error("Inserisci il nome del prodotto per la voce libera");
       return;
     }
     setCart((c) => [...c, { name: name.trim(), quantity: customQty || 1, price: parseFloat(price) || 0 }]);
@@ -151,8 +152,29 @@ export default function POSPage() {
           {cart.map((it, i) => (
             <div key={i} className="flex items-center gap-2 bg-muted/40 rounded-2xl p-2.5">
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm truncate">{it.name}</div>
-                <div className="text-xs text-muted-foreground">{formatEUR(it.price)} cad.</div>
+                {it.product_id ? (
+                  <>
+                    <div className="font-semibold text-sm truncate" title={it.name} onClick={() => toast(it.name)}>{it.name}</div>
+                    <div className="text-xs text-muted-foreground">{formatEUR(it.price)} cad.</div>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      className="crafteria-input w-full text-sm font-semibold py-1 px-2 mb-1"
+                      value={it.name}
+                      title={it.name}
+                      onChange={(e) => updateCartItem(i, "name", e.target.value)}
+                      data-testid={`cart-name-${i}`}
+                    />
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-accent/20 text-accent inline-flex items-center gap-0.5 shrink-0" title="Articolo aggiunto manualmente">
+                        <Pencil size={9}/> Manuale
+                      </span>
+                      <div className="w-20"><NumberInput value={it.price} onChange={(n) => updateCartItem(i, "price", n)} className="text-xs py-1" placeholder="Prezzo" data-testid={`cart-price-${i}`}/></div>
+                      <span className="text-xs text-muted-foreground">cad.</span>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex items-center gap-1 bg-card rounded-xl p-0.5 border border-border">
                 <button onClick={() => updateQty(i, -1)} className="h-7 w-7 grid place-items-center hover:bg-muted rounded-lg" data-testid={`cart-decrease-${i}`}><Minus size={12}/></button>
@@ -229,7 +251,7 @@ function CustomItemRow({ onAdd, qty, setQty }) {
   return (
     <div className="crafteria-card p-4 flex flex-wrap gap-2 items-center">
       <span className="text-sm font-semibold mr-1">+ Voce libera:</span>
-      <input className="crafteria-input flex-1 min-w-[160px]" placeholder="Descrizione" value={name} onChange={(e) => setName(e.target.value)} data-testid="pos-custom-name"/>
+      <input className="crafteria-input flex-1 min-w-[160px]" placeholder="Nome Prodotto" value={name} onChange={(e) => setName(e.target.value)} data-testid="pos-custom-name"/>
       <div className="w-24"><NumberInput value={parseFloat(price) || 0} onChange={(n) => setPrice(String(n))} placeholder="Prezzo"/></div>
       <div className="w-20"><NumberInput value={qty} onChange={(n) => setQty(n)} step="1" min="1" placeholder="Qty"/></div>
       <button onClick={() => { onAdd(name, price); setName(""); setPrice(""); }}

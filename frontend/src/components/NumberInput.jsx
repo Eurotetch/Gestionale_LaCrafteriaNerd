@@ -41,7 +41,7 @@ export default function NumberInput({ value, onChange, className = "", step = "0
       value={text}
       onChange={handleChange}
       onFocus={(e) => e.target.select()}
-      className={`crafteria-input ${className}`}
+      className={`crafteria-input w-full ${className}`}
     />
   );
 }
