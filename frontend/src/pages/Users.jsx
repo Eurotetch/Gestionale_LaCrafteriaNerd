@@ -126,7 +126,7 @@ export default function UsersPage() {
                     </td>
                     <td className="px-5 py-3 text-right">
                       <button onClick={() => openEdit(u)} className="p-2 rounded-lg hover:bg-muted" data-testid={`edit-user-${u.id}`}><Edit2 size={14}/></button>
-                      {u.email !== me.email && !isAdmin && (
+                      {u.email !== me?.email && !isAdmin && (
                         <button onClick={() => window.confirm("Eliminare?") && del.mutate(u.id)} className="p-2 rounded-lg hover:bg-destructive/10 text-destructive" data-testid={`delete-user-${u.id}`}>
                           <Trash2 size={14}/>
                         </button>

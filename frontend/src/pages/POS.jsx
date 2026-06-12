@@ -66,8 +66,11 @@ export default function POSPage() {
   const updateQty = (i, delta) => setCart((c) => c.map((it, idx) => idx === i ? { ...it, quantity: Math.max(0, it.quantity + delta) } : it).filter((it) => it.quantity > 0));
   const removeItem = (i) => setCart((c) => c.filter((_, idx) => idx !== i));
   const addCustom = (name, price) => {
-    if (!name || !price) return;
-    setCart((c) => [...c, { name, quantity: customQty || 1, price: parseFloat(price) }]);
+    if (!name.trim()) {
+      toast.error("Inserisci una descrizione per la voce libera");
+      return;
+    }
+    setCart((c) => [...c, { name: name.trim(), quantity: customQty || 1, price: parseFloat(price) || 0 }]);
     setCustomQty(1);
   };
 

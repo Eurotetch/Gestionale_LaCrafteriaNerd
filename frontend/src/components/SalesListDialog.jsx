@@ -19,7 +19,6 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
   const { can } = useAuth();
   const qc = useQueryClient();
   const [filterPayment, setFilterPayment] = useState("");
-  const [filterTech, setFilterTech] = useState("");
   const [filterReturned, setFilterReturned] = useState("active"); // all|active|returned
   const [sortBy, setSortBy] = useState("date_desc");
   const [search, setSearch] = useState("");
@@ -55,12 +54,6 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
   const filtered = useMemo(() => {
     let out = sales.slice();
     if (filterPayment) out = out.filter((s) => (s.payment_method || "contanti") === filterPayment);
-    if (filterTech) {
-      out = out.filter((s) => (s.items || []).some((it) => {
-        if (!it.product_id) return filterTech === "Libera";
-        return false; // can't link product technique here without products fetch
-      }));
-    }
     if (filterReturned === "active") out = out.filter((s) => !s.is_returned);
     else if (filterReturned === "returned") out = out.filter((s) => s.is_returned);
     if (search) {
@@ -80,7 +73,7 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
     }[sortBy];
     if (cmp) out.sort(cmp);
     return out;
-  }, [sales, filterPayment, filterTech, filterReturned, sortBy, search]);
+  }, [sales, filterPayment, filterReturned, sortBy, search]);
 
   const totalActive = filtered.filter((s) => !s.is_returned).reduce((sum, s) => sum + (s.total || 0), 0);
   const totalReturned = filtered.filter((s) => s.is_returned).reduce((sum, s) => sum + (s.total || 0), 0);
@@ -141,7 +134,7 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
                         {it.name} <span className="text-muted-foreground">×{it.quantity}</span>
                       </span>
                     ))}
-                    {(s.items || []).length > 3 && <span className="text-xs text-muted-foreground">+{s.items.length - 3}</span>}
+                    {(s.items || []).length > 3 && <span className="text-xs text-muted-foreground">+{(s.items || []).length - 3}</span>}
                   </td>
                   <td className={`px-3 py-2 ${s.is_returned ? "line-through" : ""}`}>{s.customer_name || "—"}</td>
                   <td className={`px-3 py-2 ${s.is_returned ? "line-through" : ""}`}>{PAY_LABELS[s.payment_method] || s.payment_method}</td>

@@ -88,7 +88,7 @@ export default function Attachments({ parentType, parentId, canEdit = true }) {
 
   const downloadUrl = (id) => {
     const token = localStorage.getItem("crafteria_token");
-    return `${API_BASE}/files/${id}/download?auth=${encodeURIComponent(token)}`;
+    return token ? `${API_BASE}/files/${id}/download?auth=${encodeURIComponent(token)}` : `${API_BASE}/files/${id}/download`;
   };
 
   return (

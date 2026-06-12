@@ -293,7 +293,7 @@ function ProductDialog({ open, onOpenChange, value, onChange, onSave, knownCateg
       const { data } = await api.post(`/upload?parent_type=products&parent_id=${value.id}`, form,
                                        { headers: { "Content-Type": "multipart/form-data" }});
       const token = localStorage.getItem("crafteria_token");
-      const url = `${API_BASE}/files/${data.id}/download?auth=${encodeURIComponent(token)}`;
+      const url = token ? `${API_BASE}/files/${data.id}/download?auth=${encodeURIComponent(token)}` : `${API_BASE}/files/${data.id}/download`;
       set("image_url", url);
       toast.success("Immagine caricata ✨");
     } catch (e) {

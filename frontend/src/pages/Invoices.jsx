@@ -71,10 +71,10 @@ export default function InvoicesPage() {
   });
 
   const setItem = (i, k, v) => {
-    const its = [...edit.items]; its[i] = { ...its[i], [k]: v }; setEdit({ ...edit, items: its });
+    const its = [...(edit.items || [])]; its[i] = { ...its[i], [k]: v }; setEdit({ ...edit, items: its });
   };
-  const addItem = () => setEdit({ ...edit, items: [...edit.items, { name: "", quantity: 1, price: 0 }] });
-  const rmItem = (i) => setEdit({ ...edit, items: edit.items.filter((_, idx) => idx !== i) });
+  const addItem = () => setEdit({ ...edit, items: [...(edit.items || []), { name: "", quantity: 1, price: 0 }] });
+  const rmItem = (i) => setEdit({ ...edit, items: (edit.items || []).filter((_, idx) => idx !== i) });
 
   const livePreview = edit ? (() => {
     const sub = (edit.items || []).reduce((s, it) => s + (it.price || 0) * (it.quantity || 0), 0);
@@ -186,7 +186,7 @@ export default function InvoicesPage() {
                   <button onClick={addItem} className="text-sm text-accent font-semibold">+ aggiungi riga</button>
                 </div>
                 <div className="space-y-2">
-                  {edit.items.map((it, i) => (
+                  {(edit.items || []).map((it, i) => (
                     <div key={i} className="grid grid-cols-12 gap-2 items-center">
                       <input className="crafteria-input col-span-6" placeholder="Descrizione" value={it.name} onChange={(e) => setItem(i, "name", e.target.value)}/>
                       <div className="col-span-2"><NumberInput value={it.quantity} onChange={(n) => setItem(i, "quantity", n)} placeholder="Qty"/></div>

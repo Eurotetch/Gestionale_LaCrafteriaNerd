@@ -17,12 +17,16 @@ export default function CustomerDetailPage() {
 
   if (isLoading || !data) return <div className="text-muted-foreground">Caricamento…</div>;
   const { customer, orders, invoices, sales, stats } = data;
+  const safeOrders = orders || [];
+  const safeInvoices = invoices || [];
+  const safeSales = sales || [];
+  const safeStats = stats || {};
 
   // Merge timeline
   const timeline = [
-    ...orders.map((o) => ({ kind: "ordine", date: o.created_at, ...o })),
-    ...invoices.map((i) => ({ kind: i.kind || "preventivo", date: i.created_at, ...i })),
-    ...sales.map((s) => ({ kind: "vendita", date: s.created_at, ...s })),
+    ...safeOrders.map((o) => ({ kind: "ordine", date: o.created_at, ...o })),
+    ...safeInvoices.map((i) => ({ kind: i.kind || "preventivo", date: i.created_at, ...i })),
+    ...safeSales.map((s) => ({ kind: "vendita", date: s.created_at, ...s })),
   ].sort((a, b) => (b.date || "").localeCompare(a.date || ""));
 
   return (
@@ -48,10 +52,10 @@ export default function CustomerDetailPage() {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6">
-          <KPI label="Fatturato" value={formatEUR(stats.total_spent)} icon={Sparkles} accent="bg-accent/15 text-accent"/>
-          <KPI label="Ordini" value={stats.total_orders} icon={Package} accent="bg-primary/20 text-primary-foreground"/>
-          <KPI label="Fatture" value={stats.total_invoices} icon={Receipt} accent="bg-secondary/20 text-secondary"/>
-          <KPI label="Vendite POS" value={stats.total_sales} icon={Wallet} accent="bg-muted text-foreground"/>
+          <KPI label="Fatturato" value={formatEUR(safeStats.total_spent)} icon={Sparkles} accent="bg-accent/15 text-accent"/>
+          <KPI label="Ordini" value={safeStats.total_orders} icon={Package} accent="bg-primary/20 text-primary-foreground"/>
+          <KPI label="Fatture" value={safeStats.total_invoices} icon={Receipt} accent="bg-secondary/20 text-secondary"/>
+          <KPI label="Vendite POS" value={safeStats.total_sales} icon={Wallet} accent="bg-muted text-foreground"/>
         </div>
       </div>
 

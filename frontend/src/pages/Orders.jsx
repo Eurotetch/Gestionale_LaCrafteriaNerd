@@ -241,7 +241,7 @@ function OrderDialog({ open, onOpenChange, value, onChange, onSave, customers, m
     onChange({ ...value, materials_used: [...(value.materials_used || []),
       { material_id: m?.id || null, name: m?.name || "", unit: m?.unit || "pz", quantity: 1, unit_cost: m?.unit_cost || 0 }] });
   };
-  const rmMaterial = (i) => onChange({ ...value, materials_used: value.materials_used.filter((_, idx) => idx !== i) });
+  const rmMaterial = (i) => onChange({ ...value, materials_used: (value.materials_used || []).filter((_, idx) => idx !== i) });
 
   const totalMatCost = (value.materials_used || []).reduce((s, m) => s + (m.quantity || 0) * (m.unit_cost || 0), 0);
   const margin = (value.total || 0) - totalMatCost;
@@ -305,7 +305,7 @@ function OrderDialog({ open, onOpenChange, value, onChange, onSave, customers, m
           </div>
           {(value.materials_used || []).length > 0 && (
             <div className="space-y-1.5 rounded-2xl bg-muted/30 p-2">
-                  {edit.materials_used.map((m, i) => (
+                  {value.materials_used.map((m, i) => (
                   <div key={i} className="grid grid-cols-12 gap-1.5 items-center text-sm">
                     <input className="crafteria-input col-span-5 py-1" placeholder="Materiale" value={m.name} onChange={(e) => setMaterial(i, "name", e.target.value)}/>
                     <div className="col-span-2"><NumberInput value={m.quantity} onChange={(n) => setMaterial(i, "quantity", n)} placeholder="Qty" className="py-1"/></div>

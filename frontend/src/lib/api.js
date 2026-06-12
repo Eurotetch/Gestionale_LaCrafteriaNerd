@@ -1,6 +1,9 @@
 import axios from "axios";
 
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+if (!BACKEND_URL) {
+  console.error("REACT_APP_BACKEND_URL non definita: controlla il file .env del frontend");
+}
 export const API_BASE = `${BACKEND_URL}/api`;
 
 const api = axios.create({ baseURL: API_BASE });

@@ -36,7 +36,7 @@ export function exportInvoicePDF(inv) {
   doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
   doc.text(`N° ${inv.number || "—"}`, W - M, 56, { align: "right" });
-  doc.text(`Data: ${formatDate(inv.issue_date) || formatDate(inv.created_at)}`, W - M, 72, { align: "right" });
+  doc.text(`Data: ${formatDate(inv.issue_date || inv.created_at)}`, W - M, 72, { align: "right" });
 
   let y = 130;
 
