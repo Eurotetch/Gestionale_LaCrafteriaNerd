@@ -219,6 +219,7 @@ class Product(BaseModel):
     sku: Optional[str] = None
     image_url: Optional[str] = None
     active: bool = True
+    tags: List[str] = []
 
 
 class Material(BaseModel):

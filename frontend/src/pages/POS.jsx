@@ -34,6 +34,12 @@ export default function POSPage() {
     queryKey: ["products"], queryFn: async () => (await api.get("/products")).data,
   });
 
+  const { data: catData } = useQuery({
+    queryKey: ["product-categories"],
+    queryFn: async () => (await api.get("/products/categories")).data,
+  });
+  const knownCategories = catData?.categories || [];
+
   const checkout = useMutation({
     mutationFn: async (payload) => (await api.post("/sales", payload)).data,
     onSuccess: (sale) => {
@@ -66,12 +72,49 @@ export default function POSPage() {
   const updateQty = (i, delta) => setCart((c) => c.map((it, idx) => idx === i ? { ...it, quantity: Math.max(0, it.quantity + delta) } : it).filter((it) => it.quantity > 0));
   const removeItem = (i) => setCart((c) => c.filter((_, idx) => idx !== i));
   const updateCartItem = (i, field, value) => setCart((c) => c.map((it, idx) => idx === i ? { ...it, [field]: value } : it));
-  const addCustom = (name, price) => {
-    if (!name.trim()) {
+
+  const createProduct = useMutation({
+    mutationFn: async (payload) => (await api.post("/products", payload)).data,
+  });
+
+  const addCustom = async ({ name, price, addToCatalog, category, technique, cost, imageUrl }) => {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
       toast.error("Inserisci il nome del prodotto per la voce libera");
       return;
     }
-    setCart((c) => [...c, { name: name.trim(), quantity: customQty || 1, price: parseFloat(price) || 0 }]);
+    const numPrice = parseFloat(price) || 0;
+    if (!addToCatalog) {
+      setCart((c) => [...c, { name: trimmedName, quantity: customQty || 1, price: numPrice }]);
+      setCustomQty(1);
+      return;
+    }
+    try {
+      let sku = "";
+      try {
+        const { data } = await api.post(`/products/next-sku?category=${encodeURIComponent(category || "Varie")}`);
+        sku = data.sku;
+      } catch { /* SKU facoltativo */ }
+      const product = await createProduct.mutateAsync({
+        name: trimmedName,
+        description: "",
+        technique: technique || "3D",
+        category: category || "",
+        price: numPrice,
+        cost: parseFloat(cost) || 0,
+        sku,
+        image_url: imageUrl || "",
+        active: true,
+        tags: ["new"],
+      });
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["product-categories"] });
+      setCart((c) => [...c, { product_id: product.id, name: product.name, quantity: customQty || 1, price: product.price }]);
+      toast.success("Prodotto creato e aggiunto al catalogo ✨");
+    } catch (e) {
+      toast.error(formatApiError(e));
+      return;
+    }
     setCustomQty(1);
   };
 
@@ -117,6 +160,9 @@ export default function POSPage() {
                 </div>
                 <div className="flex items-start justify-between gap-2">
                   <span className="font-bold text-sm leading-tight line-clamp-2">{p.name}</span>
+                  {p.tags?.includes("new") && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground shrink-0">NUOVO</span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between mt-2">
                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${t.color}`}>{t.label}</span>
@@ -129,7 +175,7 @@ export default function POSPage() {
         {filtered.length === 0 && <div className="text-center text-muted-foreground py-10">Nessun prodotto. Aggiungili dal Catalogo ✨</div>}
 
         {/* Quick add custom */}
-        <CustomItemRow onAdd={addCustom} qty={customQty} setQty={setCustomQty}/>
+        <CustomItemRow onAdd={addCustom} qty={customQty} setQty={setCustomQty} knownCategories={knownCategories}/>
       </div>
 
       {/* CART */}
@@ -245,17 +291,51 @@ export default function POSPage() {
   );
 }
 
-function CustomItemRow({ onAdd, qty, setQty }) {
+function CustomItemRow({ onAdd, qty, setQty, knownCategories }) {
   const [name, setName] = useState("");
   const [price, setPrice] = useState("");
+  const [addToCatalog, setAddToCatalog] = useState(false);
+  const [category, setCategory] = useState("");
+  const [technique, setTechnique] = useState("3D");
+  const [cost, setCost] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
+
+  const handleAdd = async () => {
+    await onAdd({ name, price, addToCatalog, category, technique, cost, imageUrl: imageUrl });
+    setName(""); setPrice(""); setCost(""); setImageUrl("");
+    setAddToCatalog(false); setCategory(""); setTechnique("3D");
+  };
+
   return (
-    <div className="crafteria-card p-4 flex flex-wrap gap-2 items-center">
-      <span className="text-sm font-semibold mr-1">+ Voce libera:</span>
-      <input className="crafteria-input flex-1 min-w-[160px]" placeholder="Nome Prodotto" value={name} onChange={(e) => setName(e.target.value)} data-testid="pos-custom-name"/>
-      <div className="w-24"><NumberInput value={parseFloat(price) || 0} onChange={(n) => setPrice(String(n))} placeholder="Prezzo"/></div>
-      <div className="w-20"><NumberInput value={qty} onChange={(n) => setQty(n)} step="1" min="1" placeholder="Qty"/></div>
-      <button onClick={() => { onAdd(name, price); setName(""); setPrice(""); }}
-              className="crafteria-btn-primary" data-testid="pos-custom-add">Aggiungi</button>
+    <div className="crafteria-card p-4 flex flex-col gap-2">
+      <div className="flex flex-wrap gap-2 items-center">
+        <span className="text-sm font-semibold mr-1">+ Voce libera:</span>
+        <input className="crafteria-input flex-1 min-w-[160px]" placeholder="Nome Prodotto" value={name} onChange={(e) => setName(e.target.value)} data-testid="pos-custom-name"/>
+        <div className="w-24"><NumberInput value={parseFloat(price) || 0} onChange={(n) => setPrice(String(n))} placeholder="Prezzo"/></div>
+        <div className="w-20"><NumberInput value={qty} onChange={(n) => setQty(n)} step="1" min="1" placeholder="Qty"/></div>
+        <button onClick={handleAdd} className="crafteria-btn-primary" data-testid="pos-custom-add">Aggiungi</button>
+      </div>
+
+      <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+        <input type="checkbox" checked={addToCatalog} onChange={(e) => setAddToCatalog(e.target.checked)} className="accent-primary" data-testid="pos-custom-add-to-catalog"/>
+        Aggiungi prodotto al catalogo
+      </label>
+
+      {addToCatalog && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 border-t border-border/50">
+          <div>
+            <input list="pos-custom-cat-list" className="crafteria-input w-full text-sm" placeholder="Categoria" value={category} onChange={(e) => setCategory(e.target.value)} data-testid="pos-custom-category"/>
+            <datalist id="pos-custom-cat-list">
+              {knownCategories.map((c) => <option key={c} value={c}/>)}
+            </datalist>
+          </div>
+          <select className="crafteria-input w-full text-sm" value={technique} onChange={(e) => setTechnique(e.target.value)} data-testid="pos-custom-technique">
+            {TECHNIQUES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+          </select>
+          <NumberInput value={parseFloat(cost) || 0} onChange={(n) => setCost(String(n))} placeholder="Costo" className="text-sm" data-testid="pos-custom-cost"/>
+          <input className="crafteria-input w-full text-sm" placeholder="URL immagine" value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} data-testid="pos-custom-image"/>
+        </div>
+      )}
     </div>
   );
 }

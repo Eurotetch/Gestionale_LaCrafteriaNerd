@@ -52,8 +52,9 @@ export default function ProductsPage() {
   const save = useMutation({
     mutationFn: async (o) => {
       if (!o.category?.trim()) throw new Error("La categoria è obbligatoria");
-      return o.id ? (await api.patch(`/products/${o.id}`, o)).data
-                  : (await api.post("/products", o)).data;
+      const payload = o.id ? { ...o, tags: (o.tags || []).filter((t) => t !== "new") } : o;
+      return o.id ? (await api.patch(`/products/${o.id}`, payload)).data
+                  : (await api.post("/products", payload)).data;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["products"] });
@@ -221,7 +222,12 @@ function ProductCardFull({ p, can, onEdit, onDel }) {
         {p.image_url ? <img src={p.image_url} alt={p.name} className="w-full h-full object-cover"/> : <Package size={36} className="text-muted-foreground"/>}
       </div>
       <div className="flex items-start justify-between gap-2">
-        <h3 className="font-extrabold leading-tight">{p.name}</h3>
+        <h3 className="font-extrabold leading-tight flex items-center gap-1.5">
+          {p.name}
+          {p.tags?.includes("new") && (
+            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-primary text-primary-foreground shrink-0">NUOVO</span>
+          )}
+        </h3>
         <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${t.color} shrink-0`}>{t.label}</span>
       </div>
       <div className="text-xs text-muted-foreground mt-1 flex justify-between">
