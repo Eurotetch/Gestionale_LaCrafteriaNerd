@@ -234,6 +234,10 @@ class Material(BaseModel):
     category: str = ""
     tags: List[str] = []
     color: str = ""
+    color_hex: str = ""
+    color_name: str = ""
+    link_url: str = ""
+    type: str = "produzione"  # produzione, neutra, consumabile
 
 
 class OrderItem(BaseModel):

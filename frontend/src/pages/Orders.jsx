@@ -45,11 +45,16 @@ export default function OrdersPage() {
 
   const save = useMutation({
     mutationFn: async (o) => {
+      const name = (o.customer_name || "").trim();
+      if (name && can("customers", "edit") && !customers.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+        try { await api.post("/customers", { name }); } catch { /* non bloccante */ }
+      }
       if (o.id) return (await api.patch(`/orders/${o.id}`, o)).data;
       return (await api.post("/orders", o)).data;
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["customers"] });
       // keep the dialog open after first save for new orders so user can add attachments
       if (data?.id && !edit?.id) setEdit(data);
       else setOpen(false);

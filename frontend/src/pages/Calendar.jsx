@@ -119,12 +119,11 @@ export default function CalendarPage() {
                       {dayEvents.slice(0, 3).map((ev) => {
                         const k = KINDS.find((x) => x.value === ev.kind) || KINDS[0];
                         return (
-                          <button key={ev.id}
-                                  onClick={(e) => { e.stopPropagation(); openEdit(ev); }}
-                                  className={`block w-full text-left text-[10px] font-semibold px-1.5 py-1 rounded-lg ${k.color} truncate`}
-                                  data-testid={`event-${ev.id}`}>
+                          <div key={ev.id}
+                               className={`block w-full text-left text-[10px] font-semibold px-1.5 py-1 rounded-lg ${k.color} truncate`}
+                               data-testid={`event-${ev.id}`}>
                             {ev.title}
-                          </button>
+                          </div>
                         );
                       })}
                       {dayEvents.length > 3 && <div className="text-[10px] text-muted-foreground">+{dayEvents.length - 3} altri</div>}

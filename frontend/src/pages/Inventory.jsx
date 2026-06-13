@@ -3,13 +3,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { INVENTORY } from "@/constants/testIds";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, Search, AlertTriangle, Tag as TagIcon } from "lucide-react";
+import { Plus, Edit2, Trash2, Search, AlertTriangle, Tag as TagIcon, ShoppingBag } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatEUR } from "@/lib/utils";
 import { toast } from "sonner";
 import NumberInput from "@/components/NumberInput";
 
-const empty = () => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "", category: "", tags: [], color: "#FFD166" });
+const empty = (type) => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "", category: "", tags: [], color: "#FFD166", color_hex: "", color_name: "", link_url: "", type: type || "produzione" });
+
+const MATERIAL_TYPES = [
+  { value: "produzione",   label: "Materiali di produzione" },
+  { value: "neutra",       label: "Merce Neutra" },
+  { value: "consumabile",  label: "Consumabile" },
+];
 
 const SORT_OPTIONS = [
   { value: "name_asc",      label: "Nome A-Z" },
@@ -34,6 +40,7 @@ export default function InventoryPage() {
   const [sort, setSort] = useState("name_asc");
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState("produzione");
 
   const { data: items = [] } = useQuery({
     queryKey: ["materials"],
@@ -60,6 +67,7 @@ export default function InventoryPage() {
   const filtered = useMemo(() => {
     let out = items.filter((m) => {
       const s = search.toLowerCase();
+      if ((m.type || "produzione") !== tab) return false;
       if (s && !((m.name || "").toLowerCase().includes(s) || (m.supplier || "").toLowerCase().includes(s))) return false;
       if (filterCat && m.category !== filterCat) return false;
       if (filterTag && !(m.tags || []).includes(filterTag)) return false;
@@ -77,7 +85,7 @@ export default function InventoryPage() {
     }[sort];
     if (cmp) out = out.slice().sort(cmp);
     return out;
-  }, [items, search, filterCat, filterTag, sort]);
+  }, [items, search, filterCat, filterTag, sort, tab]);
 
   return (
     <div data-testid={INVENTORY.root} className="space-y-6">
@@ -93,11 +101,20 @@ export default function InventoryPage() {
             <input className="crafteria-input pl-9 w-full sm:w-64" placeholder="Cerca…" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
           {can("inventory", "edit") && (
-            <button data-testid={INVENTORY.addBtn} className="crafteria-btn-primary flex items-center gap-2" onClick={() => { setEdit(empty()); setOpen(true); }}>
+            <button data-testid={INVENTORY.addBtn} className="crafteria-btn-primary flex items-center gap-2" onClick={() => { setEdit(empty(tab)); setOpen(true); }}>
               <Plus size={16}/> Nuovo
             </button>
           )}
         </div>
+      </div>
+
+      <div className="flex gap-1 rounded-2xl bg-muted/60 p-1 w-fit flex-wrap" data-testid="inventory-tabs">
+        {MATERIAL_TYPES.map((t) => (
+          <button key={t.value} onClick={() => setTab(t.value)} data-testid={`inventory-tab-${t.value}`}
+                  className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${tab === t.value ? "bg-card crafteria-shadow" : "text-muted-foreground hover:text-foreground"}`}>
+            {t.label}
+          </button>
+        ))}
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">
@@ -120,10 +137,12 @@ export default function InventoryPage() {
             <thead className="bg-muted/40 text-left">
               <tr>
                 <th className="px-5 py-3 font-semibold">Materiale</th>
-                <th className="px-5 py-3 font-semibold">Scorta</th>
+                <th className="px-2 py-3 font-semibold text-center">Col</th>
+                <th className="px-3 py-3 font-semibold">Scorta</th>
                 <th className="px-5 py-3 font-semibold">Soglia min</th>
                 <th className="px-5 py-3 font-semibold">Costo unit.</th>
                 <th className="px-5 py-3 font-semibold">Fornitore</th>
+                <th className="px-5 py-3 font-semibold"></th>
                 <th className="px-5 py-3"></th>
               </tr>
             </thead>
@@ -152,14 +171,25 @@ export default function InventoryPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-5 py-3">
+                    <td className="px-2 py-3 text-center">
+                      {m.color_hex && (
+                        <button
+                          type="button"
+                          onClick={() => toast(m.color_name || m.color_hex)}
+                          title={m.color_name || m.color_hex}
+                          className="h-5 w-5 rounded-md border border-border/60 inline-block hover:ring-2 hover:ring-primary/40 transition-all"
+                          style={{ background: m.color_hex }}
+                        />
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
                       {can("inventory", "edit") ? (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           {low && <AlertTriangle size={14} className="text-destructive shrink-0"/>}
-                          <div className="w-20">
+                          <div className="w-14">
                             <StockInput material={m} onSave={(n) => save.mutate({ ...m, stock: n })}/>
                           </div>
-                          <span className="text-muted-foreground">{m.unit}</span>
+                          <span className="text-muted-foreground text-xs">{m.unit}</span>
                         </div>
                       ) : (
                         <span className={`inline-flex items-center gap-1.5 font-bold ${low ? "text-destructive" : ""}`}>
@@ -171,6 +201,17 @@ export default function InventoryPage() {
                     <td className="px-5 py-3 text-muted-foreground">{m.min_stock} {m.unit}</td>
                     <td className="px-5 py-3 text-muted-foreground">{formatEUR(m.unit_cost)}</td>
                     <td className="px-5 py-3 text-muted-foreground">{m.supplier || "—"}</td>
+                    <td className="px-5 py-3">
+                      <a
+                        href={m.link_url || undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => { if (!m.link_url) e.preventDefault(); }}
+                        aria-disabled={!m.link_url}
+                        className={`inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-1.5 rounded-xl transition-colors ${m.link_url ? "bg-[#FFD166] text-black hover:brightness-95" : "bg-muted text-muted-foreground opacity-50 cursor-not-allowed pointer-events-none"}`}>
+                        <ShoppingBag size={12}/> Ordina
+                      </a>
+                    </td>
                     <td className="px-5 py-3 text-right">
                       {can("inventory", "edit") && (
                         <button onClick={() => { setEdit({ ...m }); setOpen(true); }} className="p-2 rounded-lg hover:bg-muted" data-testid={`edit-material-${m.id}`}><Edit2 size={14}/></button>
@@ -182,7 +223,7 @@ export default function InventoryPage() {
                   </tr>
                 );
               })}
-              {filtered.length === 0 && <tr><td colSpan={6} className="px-5 py-10 text-center text-muted-foreground">Magazzino vuoto — aggiungi il primo materiale ✨</td></tr>}
+              {filtered.length === 0 && <tr><td colSpan={8} className="px-5 py-10 text-center text-muted-foreground">Magazzino vuoto — aggiungi il primo materiale ✨</td></tr>}
             </tbody>
           </table>
         </div>
@@ -193,6 +234,17 @@ export default function InventoryPage() {
           <DialogHeader><DialogTitle>{edit?.id ? "Modifica materiale" : "Nuovo materiale"}</DialogTitle><DialogDescription className="sr-only">Dati del materiale</DialogDescription></DialogHeader>
           {edit && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <span className="block font-semibold mb-1 text-sm">Categoria magazzino</span>
+                <div className="flex flex-wrap gap-2">
+                  {MATERIAL_TYPES.map((t) => (
+                    <label key={t.value} className={`flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold cursor-pointer border transition-colors ${edit.type === t.value ? "bg-primary/15 border-primary text-primary-foreground" : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"}`}>
+                      <input type="radio" name="material-type" className="accent-primary" checked={edit.type === t.value} onChange={() => setEdit({ ...edit, type: t.value })}/>
+                      {t.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
               <F label="Nome *"><input className="crafteria-input w-full" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })}/></F>
               <F label="Unità">
                 <select className="crafteria-input w-full" value={edit.unit} onChange={(e) => setEdit({ ...edit, unit: e.target.value })}>
@@ -203,6 +255,9 @@ export default function InventoryPage() {
               <F label="Soglia min."><NumberInput value={edit.min_stock} onChange={(n) => setEdit({ ...edit, min_stock: n })} className="w-full"/></F>
               <F label="Costo unit. (€)"><NumberInput value={edit.unit_cost} onChange={(n) => setEdit({ ...edit, unit_cost: n })} className="w-full"/></F>
               <F label="Fornitore"><input className="crafteria-input w-full" value={edit.supplier || ""} onChange={(e) => setEdit({ ...edit, supplier: e.target.value })}/></F>
+              <F label="Link materiale">
+                <input className="crafteria-input w-full" placeholder="https://…" value={edit.link_url || ""} onChange={(e) => setEdit({ ...edit, link_url: e.target.value })}/>
+              </F>
               <F label="Categoria">
                 <input list="material-cat-list" className="crafteria-input w-full" value={edit.category || ""} onChange={(e) => setEdit({ ...edit, category: e.target.value })} placeholder="es. Filamenti"/>
                 <datalist id="material-cat-list">
@@ -213,7 +268,14 @@ export default function InventoryPage() {
                 <div className="flex items-center gap-2">
                   <input type="color" className="h-10 w-14 rounded-lg border border-border cursor-pointer bg-transparent"
                          value={edit.color || "#FFD166"} onChange={(e) => setEdit({ ...edit, color: e.target.value })}/>
-                  <span className="text-sm text-muted-foreground">{edit.color || "#FFD166"}</span>
+                  <input className="crafteria-input w-full" value={edit.color || ""} onChange={(e) => setEdit({ ...edit, color: e.target.value })} placeholder="#FFD166"/>
+                </div>
+              </F>
+              <F label="Colore (materiale)">
+                <div className="flex items-center gap-2">
+                  <input type="color" className="h-10 w-14 rounded-lg border border-border cursor-pointer bg-transparent shrink-0"
+                         value={edit.color_hex || "#FFFFFF"} onChange={(e) => setEdit({ ...edit, color_hex: e.target.value })}/>
+                  <input className="crafteria-input w-full" value={edit.color_name || ""} onChange={(e) => setEdit({ ...edit, color_name: e.target.value })} placeholder="es. Rosso fuoco"/>
                 </div>
               </F>
               <F label="Tag (separati da virgola)">
