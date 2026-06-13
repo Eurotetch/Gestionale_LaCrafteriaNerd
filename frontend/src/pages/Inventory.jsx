@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { INVENTORY } from "@/constants/testIds";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, Search, AlertTriangle, Tag as TagIcon, ShoppingBag } from "lucide-react";
+import { Plus, Edit2, Trash2, Search, AlertTriangle, Tag as TagIcon, ShoppingBag, Factory, PackageOpen, Droplet } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatEUR } from "@/lib/utils";
 import { toast } from "sonner";
@@ -12,9 +12,16 @@ import NumberInput from "@/components/NumberInput";
 const empty = (type) => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "", category: "", tags: [], color: "#FFD166", color_hex: "", color_name: "", link_url: "", type: type || "produzione" });
 
 const MATERIAL_TYPES = [
-  { value: "produzione",   label: "Materiali di produzione" },
-  { value: "neutra",       label: "Merce Neutra" },
-  { value: "consumabile",  label: "Consumabile" },
+  { value: "produzione",   label: "Materiali di produzione", desc: "Inchiostri, filamenti, legno, lana…", icon: Factory },
+  { value: "neutra",       label: "Merce Neutra",            desc: "Calamite, quadri, tazze, tappetini…", icon: PackageOpen },
+  { value: "consumabile",  label: "Consumabile",             desc: "Nastro, fogli, colla, lubrificante…", icon: Droplet },
+];
+
+const COLOR_PRESETS = [
+  "#FFFFFF", "#000000", "#9CA3AF", "#6B7280", "#78350F", "#A16207",
+  "#EF4444", "#F97316", "#F59E0B", "#FACC15", "#84CC16", "#22C55E",
+  "#10B981", "#14B8A6", "#06B6D4", "#0EA5E9", "#3B82F6", "#6366F1",
+  "#8B5CF6", "#A855F7", "#D946EF", "#EC4899", "#F43F5E", "#FFD166",
 ];
 
 const SORT_OPTIONS = [
@@ -108,13 +115,24 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 rounded-2xl bg-muted/60 p-1 w-fit flex-wrap" data-testid="inventory-tabs">
-        {MATERIAL_TYPES.map((t) => (
-          <button key={t.value} onClick={() => setTab(t.value)} data-testid={`inventory-tab-${t.value}`}
-                  className={`px-3 py-1.5 rounded-xl text-xs sm:text-sm font-semibold transition-colors ${tab === t.value ? "bg-card crafteria-shadow" : "text-muted-foreground hover:text-foreground"}`}>
-            {t.label}
-          </button>
-        ))}
+      <div className="flex gap-2 flex-wrap" data-testid="inventory-tabs">
+        {MATERIAL_TYPES.map((t) => {
+          const active = tab === t.value;
+          const Icon = t.icon;
+          return (
+            <button key={t.value} onClick={() => setTab(t.value)} data-testid={`inventory-tab-${t.value}`}
+                    className={`group relative flex items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all min-w-[160px] sm:min-w-[200px] border ${active ? "bg-primary/10 border-primary crafteria-shadow" : "bg-card border-border hover:border-primary/40 hover:bg-muted/40"}`}>
+              <span className={`grid place-items-center h-9 w-9 rounded-xl shrink-0 transition-colors ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground group-hover:text-foreground"}`}>
+                <Icon size={18}/>
+              </span>
+              <span className="min-w-0">
+                <span className={`block text-sm font-extrabold leading-tight ${active ? "text-primary-foreground" : "text-foreground"}`}>{t.label}</span>
+                <span className="block text-[11px] text-muted-foreground truncate">{t.desc}</span>
+              </span>
+              {active && <span className="absolute left-3 right-3 -bottom-[1px] h-0.5 rounded-full bg-primary"/>}
+            </button>
+          );
+        })}
       </div>
 
       <div className="flex gap-2 flex-wrap items-center">
@@ -237,12 +255,16 @@ export default function InventoryPage() {
               <div className="sm:col-span-2">
                 <span className="block font-semibold mb-1 text-sm">Categoria magazzino</span>
                 <div className="flex flex-wrap gap-2">
-                  {MATERIAL_TYPES.map((t) => (
-                    <label key={t.value} className={`flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold cursor-pointer border transition-colors ${edit.type === t.value ? "bg-primary/15 border-primary text-primary-foreground" : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"}`}>
-                      <input type="radio" name="material-type" className="accent-primary" checked={edit.type === t.value} onChange={() => setEdit({ ...edit, type: t.value })}/>
-                      {t.label}
-                    </label>
-                  ))}
+                  {MATERIAL_TYPES.map((t) => {
+                    const active = edit.type === t.value;
+                    const Icon = t.icon;
+                    return (
+                      <label key={t.value} className={`flex items-center gap-2 rounded-2xl px-3 py-2 text-sm font-semibold cursor-pointer border transition-colors ${active ? "bg-primary/15 border-primary text-primary-foreground" : "bg-muted/50 border-border text-muted-foreground hover:text-foreground"}`}>
+                        <input type="radio" name="material-type" className="accent-primary" checked={active} onChange={() => setEdit({ ...edit, type: t.value })}/>
+                        <Icon size={14}/> {t.label}
+                      </label>
+                    );
+                  })}
                 </div>
               </div>
               <F label="Nome *"><input className="crafteria-input w-full" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })}/></F>
@@ -266,17 +288,20 @@ export default function InventoryPage() {
               </F>
               <F label="Colore etichetta">
                 <div className="flex items-center gap-2">
-                  <input type="color" className="h-10 w-14 rounded-lg border border-border cursor-pointer bg-transparent"
+                  <input type="color" className="h-10 w-14 rounded-lg border border-border cursor-pointer bg-transparent shrink-0"
                          value={edit.color || "#FFD166"} onChange={(e) => setEdit({ ...edit, color: e.target.value })}/>
                   <input className="crafteria-input w-full" value={edit.color || ""} onChange={(e) => setEdit({ ...edit, color: e.target.value })} placeholder="#FFD166"/>
                 </div>
+                <ColorPalette value={edit.color} onPick={(hex) => setEdit({ ...edit, color: hex })}/>
               </F>
               <F label="Colore (materiale)">
                 <div className="flex items-center gap-2">
                   <input type="color" className="h-10 w-14 rounded-lg border border-border cursor-pointer bg-transparent shrink-0"
                          value={edit.color_hex || "#FFFFFF"} onChange={(e) => setEdit({ ...edit, color_hex: e.target.value })}/>
-                  <input className="crafteria-input w-full" value={edit.color_name || ""} onChange={(e) => setEdit({ ...edit, color_name: e.target.value })} placeholder="es. Rosso fuoco"/>
+                  <input className="crafteria-input w-full" value={edit.color_hex || ""} onChange={(e) => setEdit({ ...edit, color_hex: e.target.value })} placeholder="#FFFFFF"/>
                 </div>
+                <ColorPalette value={edit.color_hex} onPick={(hex) => setEdit({ ...edit, color_hex: hex })}/>
+                <input className="crafteria-input w-full mt-2" value={edit.color_name || ""} onChange={(e) => setEdit({ ...edit, color_name: e.target.value })} placeholder="Nome colore, es. Rosso fuoco"/>
               </F>
               <F label="Tag (separati da virgola)">
                 <input className="crafteria-input w-full" value={(edit.tags || []).join(", ")}
@@ -300,6 +325,23 @@ export default function InventoryPage() {
 const F = ({ label, children }) => (
   <label className="block text-sm"><span className="block font-semibold mb-1">{label}</span>{children}</label>
 );
+
+function ColorPalette({ value, onPick }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 mt-2">
+      {COLOR_PRESETS.map((hex) => (
+        <button
+          key={hex}
+          type="button"
+          title={hex}
+          onClick={() => onPick(hex)}
+          className={`h-6 w-6 rounded-full border transition-all ${(value || "").toLowerCase() === hex.toLowerCase() ? "ring-2 ring-primary border-primary scale-110" : "border-border/60 hover:scale-110"}`}
+          style={{ background: hex }}
+        />
+      ))}
+    </div>
+  );
+}
 
 function StockInput({ material, onSave }) {
   const [value, setValue] = useState(material.stock);

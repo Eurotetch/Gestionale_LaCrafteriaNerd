@@ -222,26 +222,25 @@ function DayViewDialog({ date, events, onClose, onAddEvent, onEditEvent, can }) 
           <DialogDescription className="sr-only">Eventi del giorno</DialogDescription>
         </DialogHeader>
 
-        {(allDay.length > 0 || canEdit) && (
-          <div className="space-y-1">
-            {allDay.map((ev) => {
-              const k = KINDS.find((x) => x.value === ev.kind) || KINDS[0];
-              return (
-                <button key={ev.id} onClick={() => onEditEvent(ev)}
-                        className={`block w-full text-left text-xs font-semibold px-2.5 py-1.5 rounded-xl ${k.color}`}>
-                  {ev.title} <span className="opacity-60 font-normal">· tutto il giorno</span>
-                </button>
-              );
-            })}
-            {canEdit && (
-              <button onClick={() => onAddEvent(dStr)} className="text-xs text-muted-foreground hover:text-foreground font-semibold px-2.5 py-1">
-                + Aggiungi evento per tutto il giorno
-              </button>
-            )}
-          </div>
-        )}
-
         <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-soft rounded-2xl border border-border divide-y divide-border">
+          {(allDay.length > 0 || canEdit) && (
+            <div className="sticky top-0 z-10 bg-card/95 backdrop-blur space-y-1 p-1.5 border-b border-border">
+              {allDay.map((ev) => {
+                const k = KINDS.find((x) => x.value === ev.kind) || KINDS[0];
+                return (
+                  <button key={ev.id} onClick={() => onEditEvent(ev)}
+                          className={`block w-full text-left text-xs font-semibold px-2.5 py-1.5 rounded-xl ${k.color}`}>
+                    {ev.title} <span className="opacity-60 font-normal">· tutto il giorno</span>
+                  </button>
+                );
+              })}
+              {canEdit && (
+                <button onClick={() => onAddEvent(dStr)} className="text-xs text-muted-foreground hover:text-foreground font-semibold px-2.5 py-1">
+                  + Aggiungi evento per tutto il giorno
+                </button>
+              )}
+            </div>
+          )}
           {Array.from({ length: 24 }, (_, h) => (
             <div key={h} data-hour={h} className="flex min-h-[48px]">
               <div className="w-14 shrink-0 text-xs text-muted-foreground py-1.5 px-2 border-r border-border">{pad2(h)}:00</div>
