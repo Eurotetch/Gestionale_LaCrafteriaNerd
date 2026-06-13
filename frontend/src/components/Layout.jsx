@@ -58,10 +58,10 @@ export default function Layout({ children }) {
         </button>
         <button
           onClick={() => navigate("/")}
-          className="flex items-center gap-2 text-left justify-self-center"
+          className="flex items-center gap-2 text-left justify-self-center w-[190px] shrink-0"
           data-testid="mobile-brand">
-          <img src="https://www.lacrafterianerd.com/img/site/Draghetto_logo.png" alt="logo" className="h-9 w-9" />
-          <span className="font-extrabold tracking-tight">La Crafteria Nerd</span>
+          <img src="https://www.lacrafterianerd.com/img/site/Draghetto_logo.png" alt="logo" className="h-9 w-9 shrink-0" />
+          <span className="font-extrabold tracking-tight whitespace-nowrap">La Crafteria Nerd</span>
         </button>
         <div></div>
       </header>
