@@ -32,6 +32,7 @@ from telegram_client import (
     get_webhook_info as tg_get_webhook_info, set_my_commands as tg_set_commands,
     WEBHOOK_SECRET,
 )
+from nexi_email import setup_nexi_scheduler
 
 
 # ---------------------------------------------------------------------------
@@ -316,6 +317,7 @@ class Sale(BaseModel):
     customer_id: Optional[str] = None
     customer_name: Optional[str] = None
     notes: Optional[str] = None
+    tags: List[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -339,6 +341,11 @@ async def startup():
         setup_scheduler(db)
     except Exception as e:
         logger.warning(f"telegram scheduler: {e}")
+    # Import automatico vendite POS da email Nexi
+    try:
+        setup_nexi_scheduler(db)
+    except Exception as e:
+        logger.warning(f"nexi email scheduler: {e}")
     # Seed admin (no password — first login sets it)
     admin = await db.users.find_one({"email": ADMIN_EMAIL})
     if not admin:

@@ -129,6 +129,11 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
                 <tr key={s.id} className={`border-t border-border ${s.is_returned ? "opacity-60" : ""}`} data-testid={`sale-row-${s.id}`}>
                   <td className={`px-3 py-2 whitespace-nowrap ${s.is_returned ? "line-through" : ""}`}>{formatDateTime(s.created_at)}</td>
                   <td className={`px-3 py-2 ${s.is_returned ? "line-through" : ""}`}>
+                    {(s.tags || []).includes("POS") && (
+                      <span className="inline-block mr-2 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-accent/20 text-accent">
+                        Auto POS
+                      </span>
+                    )}
                     {(s.items || []).slice(0, 3).map((it, i) => (
                       <span key={i} className="inline-block mr-2">
                         {it.name} <span className="text-muted-foreground">×{it.quantity}</span>
