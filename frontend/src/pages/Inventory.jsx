@@ -9,7 +9,7 @@ import { formatEUR } from "@/lib/utils";
 import { toast } from "sonner";
 import NumberInput from "@/components/NumberInput";
 
-const empty = () => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "", category: "", tags: [] });
+const empty = () => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "", category: "", tags: [], color: "#FFD166" });
 
 const SORT_OPTIONS = [
   { value: "name_asc",      label: "Nome A-Z" },
@@ -133,19 +133,24 @@ export default function InventoryPage() {
                 return (
                   <tr key={m.id} className="border-t border-border hover:bg-muted/30 transition-colors">
                     <td className="px-5 py-3 font-semibold">
-                      {m.name}
-                      {(m.category || (m.tags || []).length > 0) && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {m.category && (
-                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{m.category}</span>
+                      <div className="flex items-start gap-2">
+                        <span className="h-3 w-3 rounded-full border border-border/60 shrink-0 mt-1" style={{ background: m.color || "transparent" }} title={m.color || ""}/>
+                        <div>
+                          {m.name}
+                          {(m.category || (m.tags || []).length > 0) && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {m.category && (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{m.category}</span>
+                              )}
+                              {(m.tags || []).map((t) => (
+                                <span key={t} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 ${tagColor(t)}`}>
+                                  <TagIcon size={9}/> {t}
+                                </span>
+                              ))}
+                            </div>
                           )}
-                          {(m.tags || []).map((t) => (
-                            <span key={t} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 ${tagColor(t)}`}>
-                              <TagIcon size={9}/> {t}
-                            </span>
-                          ))}
                         </div>
-                      )}
+                      </div>
                     </td>
                     <td className="px-5 py-3">
                       {can("inventory", "edit") ? (
@@ -184,7 +189,7 @@ export default function InventoryPage() {
       </div>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg rounded-3xl">
+        <DialogContent className="max-w-lg rounded-3xl max-h-[85vh] overflow-y-auto scrollbar-soft">
           <DialogHeader><DialogTitle>{edit?.id ? "Modifica materiale" : "Nuovo materiale"}</DialogTitle><DialogDescription className="sr-only">Dati del materiale</DialogDescription></DialogHeader>
           {edit && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -203,6 +208,13 @@ export default function InventoryPage() {
                 <datalist id="material-cat-list">
                   {knownCategories.map((c) => <option key={c} value={c}/>)}
                 </datalist>
+              </F>
+              <F label="Colore etichetta">
+                <div className="flex items-center gap-2">
+                  <input type="color" className="h-10 w-14 rounded-lg border border-border cursor-pointer bg-transparent"
+                         value={edit.color || "#FFD166"} onChange={(e) => setEdit({ ...edit, color: e.target.value })}/>
+                  <span className="text-sm text-muted-foreground">{edit.color || "#FFD166"}</span>
+                </div>
               </F>
               <F label="Tag (separati da virgola)">
                 <input className="crafteria-input w-full" value={(edit.tags || []).join(", ")}

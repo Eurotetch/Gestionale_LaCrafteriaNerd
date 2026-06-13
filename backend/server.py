@@ -233,6 +233,7 @@ class Material(BaseModel):
     notes: Optional[str] = None
     category: str = ""
     tags: List[str] = []
+    color: str = ""
 
 
 class OrderItem(BaseModel):
