@@ -112,15 +112,15 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
         </div>
 
         {/* Table */}
-        <div className="rounded-2xl border border-border overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="rounded-2xl border border-border overflow-x-auto scrollbar-soft">
+          <table className="w-full text-sm min-w-[640px]">
             <thead className="bg-muted/40 text-left text-xs uppercase tracking-wider">
               <tr>
-                <th className="px-3 py-2 font-bold">Data/ora</th>
+                <th className="px-3 py-2 font-bold">Data/Ora</th>
                 <th className="px-3 py-2 font-bold">Voci</th>
-                <th className="px-3 py-2 font-bold">Cliente</th>
-                <th className="px-3 py-2 font-bold">Metodo</th>
                 <th className="px-3 py-2 font-bold text-right">Totale</th>
+                <th className="px-3 py-2 font-bold">Metodo</th>
+                <th className="px-3 py-2 font-bold">Cliente</th>
                 <th className="px-3 py-2"></th>
               </tr>
             </thead>
@@ -136,9 +136,9 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
                     ))}
                     {(s.items || []).length > 3 && <span className="text-xs text-muted-foreground">+{(s.items || []).length - 3}</span>}
                   </td>
-                  <td className={`px-3 py-2 ${s.is_returned ? "line-through" : ""}`}>{s.customer_name || "—"}</td>
-                  <td className={`px-3 py-2 ${s.is_returned ? "line-through" : ""}`}>{PAY_LABELS[s.payment_method] || s.payment_method}</td>
                   <td className={`px-3 py-2 text-right font-bold ${s.is_returned ? "line-through text-muted-foreground" : ""}`}>{formatEUR(s.total)}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap ${s.is_returned ? "line-through" : ""}`}>{PAY_LABELS[s.payment_method] || s.payment_method}</td>
+                  <td className={`px-3 py-2 ${s.is_returned ? "line-through" : ""}`}>{s.customer_name || "—"}</td>
                   <td className="px-3 py-2 text-right space-x-1 whitespace-nowrap">
                     {can("pos", "edit") && (
                       <button

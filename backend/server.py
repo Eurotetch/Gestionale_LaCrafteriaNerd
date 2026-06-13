@@ -231,6 +231,8 @@ class Material(BaseModel):
     unit_cost: float = 0.0
     supplier: Optional[str] = None
     notes: Optional[str] = None
+    category: str = ""
+    tags: List[str] = []
 
 
 class OrderItem(BaseModel):

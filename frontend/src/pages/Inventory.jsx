@@ -1,20 +1,37 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { INVENTORY } from "@/constants/testIds";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, Search, AlertTriangle } from "lucide-react";
+import { Plus, Edit2, Trash2, Search, AlertTriangle, Tag as TagIcon } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatEUR } from "@/lib/utils";
 import { toast } from "sonner";
 import NumberInput from "@/components/NumberInput";
 
-const empty = () => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "" });
+const empty = () => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "", category: "", tags: [] });
+
+const SORT_OPTIONS = [
+  { value: "name_asc",      label: "Nome A-Z" },
+  { value: "name_desc",     label: "Nome Z-A" },
+  { value: "stock_asc",     label: "Scorta crescente" },
+  { value: "stock_desc",    label: "Scorta decrescente" },
+  { value: "min_stock_asc", label: "Soglia min. crescente" },
+  { value: "min_stock_desc",label: "Soglia min. decrescente" },
+  { value: "category",      label: "Categoria" },
+  { value: "tag",           label: "Tag" },
+];
+
+const TAG_COLORS = ["bg-primary/20 text-primary-foreground", "bg-accent/20 text-accent", "bg-secondary/20 text-secondary", "bg-destructive/10 text-destructive"];
+const tagColor = (tag) => TAG_COLORS[Math.abs([...tag].reduce((h, c) => h + c.charCodeAt(0), 0)) % TAG_COLORS.length];
 
 export default function InventoryPage() {
   const { can } = useAuth();
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
+  const [filterCat, setFilterCat] = useState("");
+  const [filterTag, setFilterTag] = useState("");
+  const [sort, setSort] = useState("name_asc");
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
 
@@ -23,6 +40,11 @@ export default function InventoryPage() {
     queryFn: async () => (await api.get("/materials")).data,
     refetchInterval: 3000,
   });
+
+  const knownCategories = useMemo(() =>
+    [...new Set(items.map((m) => m.category).filter((c) => c && c.trim()))].sort(), [items]);
+  const knownTags = useMemo(() =>
+    [...new Set(items.flatMap((m) => m.tags || []).filter((t) => t && t.trim()))].sort(), [items]);
 
   const save = useMutation({
     mutationFn: async (o) => o.id ? (await api.patch(`/materials/${o.id}`, o)).data : (await api.post("/materials", o)).data,
@@ -35,10 +57,27 @@ export default function InventoryPage() {
     onError: (e) => toast.error(formatApiError(e)),
   });
 
-  const filtered = items.filter((m) => {
-    const s = search.toLowerCase();
-    return !s || (m.name || "").toLowerCase().includes(s) || (m.supplier || "").toLowerCase().includes(s);
-  });
+  const filtered = useMemo(() => {
+    let out = items.filter((m) => {
+      const s = search.toLowerCase();
+      if (s && !((m.name || "").toLowerCase().includes(s) || (m.supplier || "").toLowerCase().includes(s))) return false;
+      if (filterCat && m.category !== filterCat) return false;
+      if (filterTag && !(m.tags || []).includes(filterTag)) return false;
+      return true;
+    });
+    const cmp = {
+      name_asc:       (a, b) => (a.name || "").localeCompare(b.name || ""),
+      name_desc:      (a, b) => (b.name || "").localeCompare(a.name || ""),
+      stock_asc:      (a, b) => (a.stock ?? 0) - (b.stock ?? 0),
+      stock_desc:     (a, b) => (b.stock ?? 0) - (a.stock ?? 0),
+      min_stock_asc:  (a, b) => (a.min_stock ?? 0) - (b.min_stock ?? 0),
+      min_stock_desc: (a, b) => (b.min_stock ?? 0) - (a.min_stock ?? 0),
+      category:       (a, b) => (a.category || "").localeCompare(b.category || ""),
+      tag:            (a, b) => ((a.tags || [])[0] || "").localeCompare((b.tags || [])[0] || ""),
+    }[sort];
+    if (cmp) out = out.slice().sort(cmp);
+    return out;
+  }, [items, search, filterCat, filterTag, sort]);
 
   return (
     <div data-testid={INVENTORY.root} className="space-y-6">
@@ -48,7 +87,7 @@ export default function InventoryPage() {
           <h1 className="text-3xl sm:text-4xl">Inventario Materiali 📦</h1>
           <p className="text-muted-foreground mt-1">Tutto sotto controllo: scorte, soglie minime, fornitori.</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"/>
             <input className="crafteria-input pl-9 w-full sm:w-64" placeholder="Cerca…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -59,6 +98,20 @@ export default function InventoryPage() {
             </button>
           )}
         </div>
+      </div>
+
+      <div className="flex gap-2 flex-wrap items-center">
+        <select className="crafteria-input" value={filterCat} onChange={(e) => setFilterCat(e.target.value)}>
+          <option value="">Tutte le categorie</option>
+          {knownCategories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+        <select className="crafteria-input" value={filterTag} onChange={(e) => setFilterTag(e.target.value)}>
+          <option value="">Tutti i tag</option>
+          {knownTags.map((t) => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select className="crafteria-input" value={sort} onChange={(e) => setSort(e.target.value)}>
+          {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
       </div>
 
       <div className="crafteria-card overflow-hidden">
@@ -79,7 +132,21 @@ export default function InventoryPage() {
                 const low = (m.stock ?? 0) <= (m.min_stock ?? 0);
                 return (
                   <tr key={m.id} className="border-t border-border hover:bg-muted/30 transition-colors">
-                    <td className="px-5 py-3 font-semibold">{m.name}</td>
+                    <td className="px-5 py-3 font-semibold">
+                      {m.name}
+                      {(m.category || (m.tags || []).length > 0) && (
+                        <div className="flex flex-wrap gap-1 mt-1">
+                          {m.category && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{m.category}</span>
+                          )}
+                          {(m.tags || []).map((t) => (
+                            <span key={t} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full inline-flex items-center gap-0.5 ${tagColor(t)}`}>
+                              <TagIcon size={9}/> {t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </td>
                     <td className="px-5 py-3">
                       {can("inventory", "edit") ? (
                         <div className="flex items-center gap-1.5">
@@ -131,6 +198,17 @@ export default function InventoryPage() {
               <F label="Soglia min."><NumberInput value={edit.min_stock} onChange={(n) => setEdit({ ...edit, min_stock: n })} className="w-full"/></F>
               <F label="Costo unit. (€)"><NumberInput value={edit.unit_cost} onChange={(n) => setEdit({ ...edit, unit_cost: n })} className="w-full"/></F>
               <F label="Fornitore"><input className="crafteria-input w-full" value={edit.supplier || ""} onChange={(e) => setEdit({ ...edit, supplier: e.target.value })}/></F>
+              <F label="Categoria">
+                <input list="material-cat-list" className="crafteria-input w-full" value={edit.category || ""} onChange={(e) => setEdit({ ...edit, category: e.target.value })} placeholder="es. Filamenti"/>
+                <datalist id="material-cat-list">
+                  {knownCategories.map((c) => <option key={c} value={c}/>)}
+                </datalist>
+              </F>
+              <F label="Tag (separati da virgola)">
+                <input className="crafteria-input w-full" value={(edit.tags || []).join(", ")}
+                       onChange={(e) => setEdit({ ...edit, tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean) })}
+                       placeholder="es. urgente, fragile"/>
+              </F>
               <div className="sm:col-span-2">
                 <F label="Note"><textarea rows={3} className="crafteria-input w-full" value={edit.notes || ""} onChange={(e) => setEdit({ ...edit, notes: e.target.value })}/></F>
               </div>

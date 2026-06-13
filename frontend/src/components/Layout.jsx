@@ -52,17 +52,18 @@ export default function Layout({ children }) {
   return (
     <div className="min-h-screen gradient-warm md:flex">
       {/* Mobile topbar — sticky */}
-      <header className="md:hidden flex items-center justify-between p-4 border-b border-border/60 bg-card/90 backdrop-blur sticky top-0 z-30">
+      <header className="md:hidden grid grid-cols-3 items-center p-4 border-b border-border/60 bg-card/90 backdrop-blur sticky top-0 z-30">
+        <button onClick={() => setOpen(true)} className="p-2 rounded-xl bg-muted justify-self-start" data-testid="mobile-menu-toggle">
+          <Menu size={20}/>
+        </button>
         <button
           onClick={() => navigate("/")}
-          className="flex items-center gap-2 text-left"
+          className="flex items-center gap-2 text-left justify-self-center"
           data-testid="mobile-brand">
           <img src="https://www.lacrafterianerd.com/img/site/Draghetto_logo.png" alt="logo" className="h-9 w-9" />
           <span className="font-extrabold tracking-tight">La Crafteria Nerd</span>
         </button>
-        <button onClick={() => setOpen(true)} className="p-2 rounded-xl bg-muted" data-testid="mobile-menu-toggle">
-          <Menu size={20}/>
-        </button>
+        <div></div>
       </header>
 
       {/* Mobile overlay backdrop */}

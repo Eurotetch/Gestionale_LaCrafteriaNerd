@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { CALENDAR } from "@/constants/testIds";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { formatDate } from "@/lib/utils";
 import { toast } from "sonner";
 
 const KINDS = [
@@ -14,7 +13,8 @@ const KINDS = [
   { value: "evento",      label: "✨ Evento",       color: "bg-accent/20 text-accent" },
 ];
 
-const empty = () => ({ title: "", description: "", start: new Date().toISOString().slice(0, 10), end: "", kind: "lavorazione" });
+const pad2 = (n) => String(n).padStart(2, "0");
+const empty = (startValue) => ({ title: "", description: "", start: startValue || new Date().toISOString().slice(0, 10), end: "", kind: "lavorazione" });
 
 function monthMatrix(year, month) {
   const first = new Date(year, month, 1);
@@ -27,6 +27,8 @@ function monthMatrix(year, month) {
   return cells;
 }
 
+const dateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+
 export default function CalendarPage() {
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -34,6 +36,7 @@ export default function CalendarPage() {
   const [cursor, setCursor] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
+  const [dayView, setDayView] = useState(null); // Date | null
 
   const { data: events = [] } = useQuery({
     queryKey: ["calendar"],
@@ -62,6 +65,18 @@ export default function CalendarPage() {
     return acc;
   }, {});
 
+  const openEdit = (ev) => { setEdit({ ...ev }); setOpen(true); };
+  const openNew = (startValue) => { setEdit(empty(startValue)); setOpen(true); };
+
+  const hasTime = (edit?.start || "").length > 10;
+  const toggleHasTime = (checked) => {
+    if (checked) {
+      setEdit({ ...edit, start: (edit.start || "").slice(0, 10) + "T09:00", end: edit.end ? edit.end.slice(0, 10) + "T10:00" : "" });
+    } else {
+      setEdit({ ...edit, start: (edit.start || "").slice(0, 10), end: edit.end ? edit.end.slice(0, 10) : "" });
+    }
+  };
+
   return (
     <div data-testid={CALENDAR.root} className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -69,12 +84,15 @@ export default function CalendarPage() {
           <div className="text-xs uppercase tracking-widest text-accent font-bold">agenda</div>
           <h1 className="text-3xl sm:text-4xl">Calendario Lavorazioni 📆</h1>
         </div>
-        <div className="flex items-center gap-2">
-          <button className="p-2 rounded-xl hover:bg-muted" onClick={() => setCursor(new Date(year, month - 1, 1))}><ChevronLeft size={16}/></button>
-          <div className="font-bold capitalize min-w-[160px] text-center">{monthName}</div>
-          <button className="p-2 rounded-xl hover:bg-muted" onClick={() => setCursor(new Date(year, month + 1, 1))}><ChevronRight size={16}/></button>
+        <div className="flex items-center gap-1 flex-wrap">
+          <button className="p-2 rounded-xl hover:bg-muted" title="Anno precedente" onClick={() => setCursor(new Date(year - 1, month, 1))}><ChevronsLeft size={16}/></button>
+          <button className="p-2 rounded-xl hover:bg-muted" title="Mese precedente" onClick={() => setCursor(new Date(year, month - 1, 1))}><ChevronLeft size={16}/></button>
+          <div className="font-bold capitalize min-w-[140px] text-center">{monthName}</div>
+          <button className="p-2 rounded-xl hover:bg-muted" title="Mese successivo" onClick={() => setCursor(new Date(year, month + 1, 1))}><ChevronRight size={16}/></button>
+          <button className="p-2 rounded-xl hover:bg-muted" title="Anno successivo" onClick={() => setCursor(new Date(year + 1, month, 1))}><ChevronsRight size={16}/></button>
+          <button className="text-xs font-bold rounded-xl px-3 py-2 bg-muted hover:bg-muted/70 ml-1" onClick={() => setCursor(new Date(today.getFullYear(), today.getMonth(), 1))}>Oggi</button>
           {can("calendar", "edit") && (
-            <button data-testid={CALENDAR.addBtn} className="crafteria-btn-primary flex items-center gap-2 ml-2" onClick={() => { setEdit(empty()); setOpen(true); }}>
+            <button data-testid={CALENDAR.addBtn} className="crafteria-btn-primary flex items-center gap-2 ml-2" onClick={() => openNew()}>
               <Plus size={16}/> Evento
             </button>
           )}
@@ -87,27 +105,22 @@ export default function CalendarPage() {
         </div>
         <div className="grid grid-cols-7 gap-1.5">
           {cells.map((d, i) => {
-            const key = d ? d.toISOString().slice(0, 10) : `e-${i}`;
+            const key = d ? dateKey(d) : `e-${i}`;
             const isToday = d && d.toDateString() === today.toDateString();
             const dayEvents = (d && eventsByDay[key]) || [];
             return (
               <div key={key}
-                   className={`min-h-[90px] rounded-2xl p-2 border ${d ? "bg-card border-border/70" : "bg-transparent border-transparent"} ${isToday ? "ring-2 ring-primary" : ""}`}>
+                   onClick={() => d && setDayView(d)}
+                   className={`min-h-[90px] rounded-2xl p-2 border ${d ? "bg-card border-border/70 cursor-pointer hover:ring-2 hover:ring-primary/30 transition-all" : "bg-transparent border-transparent"} ${isToday ? "ring-2 ring-primary" : ""}`}>
                 {d && (
                   <>
-                    <div className="text-xs font-bold mb-1 flex items-center justify-between">
-                      <span>{d.getDate()}</span>
-                      {can("calendar", "edit") && (
-                        <button onClick={() => { setEdit({ ...empty(), start: key }); setOpen(true); }}
-                                className="opacity-0 hover:opacity-100 group-hover:opacity-100 text-muted-foreground text-xs">+</button>
-                      )}
-                    </div>
+                    <div className="text-xs font-bold mb-1">{d.getDate()}</div>
                     <div className="space-y-1">
                       {dayEvents.slice(0, 3).map((ev) => {
                         const k = KINDS.find((x) => x.value === ev.kind) || KINDS[0];
                         return (
                           <button key={ev.id}
-                                  onClick={() => { setEdit({ ...ev }); setOpen(true); }}
+                                  onClick={(e) => { e.stopPropagation(); openEdit(ev); }}
                                   className={`block w-full text-left text-[10px] font-semibold px-1.5 py-1 rounded-lg ${k.color} truncate`}
                                   data-testid={`event-${ev.id}`}>
                             {ev.title}
@@ -126,7 +139,7 @@ export default function CalendarPage() {
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg rounded-3xl">
-          <DialogHeader><DialogTitle>{edit?.id ? "Modifica evento" : "Nuovo evento"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{edit?.id ? "Modifica evento" : "Nuovo evento"}</DialogTitle><DialogDescription className="sr-only">Dati evento</DialogDescription></DialogHeader>
           {edit && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="sm:col-span-2">
@@ -137,8 +150,20 @@ export default function CalendarPage() {
                   {KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}
                 </select>
               </F>
-              <F label="Data inizio *"><input type="date" className="crafteria-input w-full" value={edit.start || ""} onChange={(e) => setEdit({ ...edit, start: e.target.value })}/></F>
-              <F label="Data fine"><input type="date" className="crafteria-input w-full" value={edit.end || ""} onChange={(e) => setEdit({ ...edit, end: e.target.value })}/></F>
+              <label className="flex items-center gap-2 text-sm font-semibold cursor-pointer self-end pb-2">
+                <input type="checkbox" checked={hasTime} onChange={(e) => toggleHasTime(e.target.checked)} className="accent-primary"/>
+                Imposta orario
+              </label>
+              <F label={hasTime ? "Inizio *" : "Data inizio *"}>
+                <input type={hasTime ? "datetime-local" : "date"} className="crafteria-input w-full"
+                       value={hasTime ? (edit.start || "").slice(0, 16) : (edit.start || "").slice(0, 10)}
+                       onChange={(e) => setEdit({ ...edit, start: e.target.value })}/>
+              </F>
+              <F label={hasTime ? "Fine" : "Data fine"}>
+                <input type={hasTime ? "datetime-local" : "date"} className="crafteria-input w-full"
+                       value={hasTime ? (edit.end || "").slice(0, 16) : (edit.end || "").slice(0, 10)}
+                       onChange={(e) => setEdit({ ...edit, end: e.target.value })}/>
+              </F>
               <div className="sm:col-span-2">
                 <F label="Descrizione"><textarea rows={3} className="crafteria-input w-full" value={edit.description || ""} onChange={(e) => setEdit({ ...edit, description: e.target.value })}/></F>
               </div>
@@ -154,7 +179,91 @@ export default function CalendarPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <DayViewDialog
+        date={dayView}
+        events={dayView ? (eventsByDay[dateKey(dayView)] || []) : []}
+        onClose={() => setDayView(null)}
+        onAddEvent={(startValue) => { setDayView(null); openNew(startValue); }}
+        onEditEvent={(ev) => { setDayView(null); openEdit(ev); }}
+        can={can}
+      />
     </div>
+  );
+}
+
+function DayViewDialog({ date, events, onClose, onAddEvent, onEditEvent, can }) {
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (date && scrollRef.current) {
+      const hourEl = scrollRef.current.querySelector('[data-hour="7"]');
+      if (hourEl) hourEl.scrollIntoView({ block: "start" });
+    }
+  }, [date]);
+
+  if (!date) return null;
+  const dStr = dateKey(date);
+  const allDay = events.filter((ev) => (ev.start || "").length <= 10);
+  const timed = events.filter((ev) => (ev.start || "").length > 10);
+  const byHour = {};
+  timed.forEach((ev) => {
+    const h = parseInt((ev.start || "").slice(11, 13), 10) || 0;
+    (byHour[h] = byHour[h] || []).push(ev);
+  });
+
+  const dateLabel = date.toLocaleDateString("it-IT", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
+  const canEdit = can("calendar", "edit");
+
+  return (
+    <Dialog open={!!date} onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="max-w-2xl rounded-3xl max-h-[85vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="capitalize">{dateLabel}</DialogTitle>
+          <DialogDescription className="sr-only">Eventi del giorno</DialogDescription>
+        </DialogHeader>
+
+        {(allDay.length > 0 || canEdit) && (
+          <div className="space-y-1">
+            {allDay.map((ev) => {
+              const k = KINDS.find((x) => x.value === ev.kind) || KINDS[0];
+              return (
+                <button key={ev.id} onClick={() => onEditEvent(ev)}
+                        className={`block w-full text-left text-xs font-semibold px-2.5 py-1.5 rounded-xl ${k.color}`}>
+                  {ev.title} <span className="opacity-60 font-normal">· tutto il giorno</span>
+                </button>
+              );
+            })}
+            {canEdit && (
+              <button onClick={() => onAddEvent(dStr)} className="text-xs text-muted-foreground hover:text-foreground font-semibold px-2.5 py-1">
+                + Aggiungi evento per tutto il giorno
+              </button>
+            )}
+          </div>
+        )}
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-soft rounded-2xl border border-border divide-y divide-border">
+          {Array.from({ length: 24 }, (_, h) => (
+            <div key={h} data-hour={h} className="flex min-h-[48px]">
+              <div className="w-14 shrink-0 text-xs text-muted-foreground py-1.5 px-2 border-r border-border">{pad2(h)}:00</div>
+              <div className={`flex-1 p-1 space-y-1 ${canEdit ? "cursor-pointer hover:bg-muted/30 transition-colors" : ""}`}
+                   onClick={() => canEdit && onAddEvent(`${dStr}T${pad2(h)}:00`)}>
+                {(byHour[h] || []).map((ev) => {
+                  const k = KINDS.find((x) => x.value === ev.kind) || KINDS[0];
+                  return (
+                    <button key={ev.id}
+                            onClick={(e) => { e.stopPropagation(); onEditEvent(ev); }}
+                            className={`block w-full text-left text-xs font-semibold px-2 py-1 rounded-lg ${k.color}`}>
+                      {(ev.start || "").slice(11, 16)} — {ev.title}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
