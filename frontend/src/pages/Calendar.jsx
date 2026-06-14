@@ -5,6 +5,7 @@ import { CALENDAR } from "@/constants/testIds";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Plus, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
+import { useBackClose } from "@/hooks/useBackClose";
 import { toast } from "sonner";
 
 const KINDS = [
@@ -29,6 +30,20 @@ function monthMatrix(year, month) {
 
 const dateKey = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 
+// Returns all day-keys (YYYY-MM-DD) between startStr and endStr inclusive.
+function rangeDayKeys(startStr, endStr) {
+  const keys = [];
+  const [sy, sm, sd] = startStr.split("-").map(Number);
+  const [ey, em, ed] = endStr.split("-").map(Number);
+  let d = new Date(sy, sm - 1, sd);
+  const end = new Date(ey, em - 1, ed);
+  while (d <= end) {
+    keys.push(dateKey(d));
+    d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+  }
+  return keys;
+}
+
 export default function CalendarPage() {
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -37,6 +52,9 @@ export default function CalendarPage() {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
   const [dayView, setDayView] = useState(null); // Date | null
+
+  useBackClose(!!dayView, () => setDayView(null));
+  useBackClose(open, () => setOpen(false));
 
   const { data: events = [] } = useQuery({
     queryKey: ["calendar"],
@@ -60,8 +78,14 @@ export default function CalendarPage() {
   const monthName = cursor.toLocaleDateString("it-IT", { month: "long", year: "numeric" });
 
   const eventsByDay = events.reduce((acc, ev) => {
-    const d = (ev.start || "").slice(0, 10);
-    (acc[d] = acc[d] || []).push(ev);
+    const startStr = (ev.start || "").slice(0, 10);
+    const endStr = (ev.end || "").slice(0, 10);
+    const isAllDay = (ev.start || "").length <= 10;
+    if (isAllDay && endStr && endStr > startStr) {
+      rangeDayKeys(startStr, endStr).forEach((d) => { (acc[d] = acc[d] || []).push(ev); });
+    } else {
+      (acc[startStr] = acc[startStr] || []).push(ev);
+    }
     return acc;
   }, {});
 
@@ -179,14 +203,16 @@ export default function CalendarPage() {
         </DialogContent>
       </Dialog>
 
-      <DayViewDialog
-        date={dayView}
-        events={dayView ? (eventsByDay[dateKey(dayView)] || []) : []}
-        onClose={() => setDayView(null)}
-        onAddEvent={(startValue) => { setDayView(null); openNew(startValue); }}
-        onEditEvent={(ev) => { setDayView(null); openEdit(ev); }}
-        can={can}
-      />
+      {!open && (
+        <DayViewDialog
+          date={dayView}
+          events={dayView ? (eventsByDay[dateKey(dayView)] || []) : []}
+          onClose={() => setDayView(null)}
+          onAddEvent={(startValue) => openNew(startValue)}
+          onEditEvent={(ev) => openEdit(ev)}
+          can={can}
+        />
+      )}
     </div>
   );
 }

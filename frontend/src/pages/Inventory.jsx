@@ -3,11 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { INVENTORY } from "@/constants/testIds";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Plus, Edit2, Trash2, Search, AlertTriangle, Tag as TagIcon, ShoppingBag, Factory, PackageOpen, Droplet } from "lucide-react";
+import { Plus, Trash2, Search, AlertTriangle, Tag as TagIcon, ShoppingBag, Factory, PackageOpen, Droplet } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 import { formatEUR } from "@/lib/utils";
 import { toast } from "sonner";
 import NumberInput from "@/components/NumberInput";
+import { useBackClose } from "@/hooks/useBackClose";
 
 const empty = (type) => ({ name: "", unit: "pz", stock: 0, min_stock: 0, unit_cost: 0, supplier: "", notes: "", category: "", tags: [], color: "#FFD166", color_hex: "", color_name: "", link_url: "", type: type || "produzione" });
 
@@ -48,6 +49,8 @@ export default function InventoryPage() {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState("produzione");
+
+  useBackClose(open, () => setOpen(false));
 
   const { data: items = [] } = useQuery({
     queryKey: ["materials"],
@@ -173,7 +176,11 @@ export default function InventoryPage() {
                       <div className="flex items-start gap-2">
                         <span className="h-3 w-3 rounded-full border border-border/60 shrink-0 mt-1" style={{ background: m.color || "transparent" }} title={m.color || ""}/>
                         <div>
-                          {m.name}
+                          {can("inventory", "edit") ? (
+                            <button type="button" className="text-left hover:underline" onClick={() => { setEdit({ ...m }); setOpen(true); }} data-testid={`edit-material-${m.id}`}>
+                              {m.name}
+                            </button>
+                          ) : m.name}
                           {(m.category || (m.tags || []).length > 0) && (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {m.category && (
@@ -231,9 +238,6 @@ export default function InventoryPage() {
                       </a>
                     </td>
                     <td className="px-5 py-3 text-right">
-                      {can("inventory", "edit") && (
-                        <button onClick={() => { setEdit({ ...m }); setOpen(true); }} className="p-2 rounded-lg hover:bg-muted" data-testid={`edit-material-${m.id}`}><Edit2 size={14}/></button>
-                      )}
                       {can("inventory", "delete") && (
                         <button onClick={() => window.confirm("Eliminare?") && del.mutate(m.id)} className="p-2 rounded-lg hover:bg-destructive/10 text-destructive" data-testid={`delete-material-${m.id}`}><Trash2 size={14}/></button>
                       )}
@@ -301,7 +305,6 @@ export default function InventoryPage() {
                   <input className="crafteria-input w-full" value={edit.color_hex || ""} onChange={(e) => setEdit({ ...edit, color_hex: e.target.value })} placeholder="#FFFFFF"/>
                 </div>
                 <ColorPalette value={edit.color_hex} onPick={(hex) => setEdit({ ...edit, color_hex: hex })}/>
-                <input className="crafteria-input w-full mt-2" value={edit.color_name || ""} onChange={(e) => setEdit({ ...edit, color_name: e.target.value })} placeholder="Nome colore, es. Rosso fuoco"/>
               </F>
               <F label="Tag (separati da virgola)">
                 <input className="crafteria-input w-full" value={(edit.tags || []).join(", ")}
