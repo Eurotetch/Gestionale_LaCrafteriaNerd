@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Trash2, Undo2, X } from "lucide-react";
 import { formatEUR, formatDateTime, techMeta } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
+import { useBackClose } from "@/hooks/useBackClose";
 import { toast } from "sonner";
 
 const PAY_LABELS = {
@@ -22,6 +23,9 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
   const [filterReturned, setFilterReturned] = useState("active"); // all|active|returned
   const [sortBy, setSortBy] = useState("date_desc");
   const [search, setSearch] = useState("");
+  const [editSale, setEditSale] = useState(null);
+
+  useBackClose(!!editSale, () => setEditSale(null));
 
   const { data: sales = [] } = useQuery({
     queryKey: ["sales", period],
@@ -47,6 +51,17 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
       qc.invalidateQueries({ queryKey: ["sales"] });
       qc.invalidateQueries({ queryKey: ["dashboard"] });
       toast.success("Vendita eliminata");
+    },
+    onError: (e) => toast.error(formatApiError(e)),
+  });
+
+  const updateSale = useMutation({
+    mutationFn: async ({ id, ...payload }) => (await api.patch(`/sales/${id}`, payload)).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["sales"] });
+      qc.invalidateQueries({ queryKey: ["dashboard"] });
+      toast.success("Vendita aggiornata");
+      setEditSale(null);
     },
     onError: (e) => toast.error(formatApiError(e)),
   });
@@ -127,7 +142,13 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
             <tbody>
               {filtered.map((s) => (
                 <tr key={s.id} className={`border-t border-border ${s.is_returned ? "opacity-60" : ""}`} data-testid={`sale-row-${s.id}`}>
-                  <td className={`px-3 py-2 whitespace-nowrap ${s.is_returned ? "line-through" : ""}`}>{formatDateTime(s.created_at)}</td>
+                  <td className={`px-3 py-2 whitespace-nowrap ${s.is_returned ? "line-through" : ""}`}>
+                    {can("pos", "edit") ? (
+                      <button type="button" className="hover:underline" onClick={() => setEditSale({ ...s })} data-testid={`sale-edit-${s.id}`}>
+                        {formatDateTime(s.created_at)}
+                      </button>
+                    ) : formatDateTime(s.created_at)}
+                  </td>
                   <td className={`px-3 py-2 ${s.is_returned ? "line-through" : ""}`}>
                     {(s.tags || []).includes("POS") && (
                       <span className="inline-block mr-2 px-1.5 py-0.5 rounded-md text-[10px] font-bold uppercase bg-accent/20 text-accent">
@@ -175,6 +196,50 @@ export default function SalesListDialog({ open, onOpenChange, period = "all", ti
           </table>
         </div>
       </DialogContent>
+
+      <Dialog open={!!editSale} onOpenChange={(v) => !v && setEditSale(null)}>
+        <DialogContent className="max-w-md rounded-3xl">
+          <DialogHeader>
+            <DialogTitle>Modifica vendita</DialogTitle>
+            <DialogDescription className="sr-only">Modifica i dati della vendita</DialogDescription>
+          </DialogHeader>
+          {editSale && (
+            <div className="space-y-3">
+              <div className="text-sm text-muted-foreground">
+                {formatDateTime(editSale.created_at)} · Totale <b>{formatEUR(editSale.total)}</b>
+              </div>
+              <label className="block text-sm">
+                <span className="block font-semibold mb-1">Metodo di pagamento</span>
+                <select className="crafteria-input w-full" value={editSale.payment_method || "contanti"}
+                        onChange={(e) => setEditSale({ ...editSale, payment_method: e.target.value })}>
+                  {Object.entries(PAY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                </select>
+              </label>
+              <label className="block text-sm">
+                <span className="block font-semibold mb-1">Cliente</span>
+                <input className="crafteria-input w-full" value={editSale.customer_name || ""}
+                       onChange={(e) => setEditSale({ ...editSale, customer_name: e.target.value })}/>
+              </label>
+              <label className="block text-sm">
+                <span className="block font-semibold mb-1">Note</span>
+                <textarea rows={3} className="crafteria-input w-full" value={editSale.notes || ""}
+                          onChange={(e) => setEditSale({ ...editSale, notes: e.target.value })}/>
+              </label>
+            </div>
+          )}
+          <DialogFooter>
+            <button className="crafteria-btn-primary"
+                    onClick={() => updateSale.mutate({
+                      id: editSale.id,
+                      payment_method: editSale.payment_method,
+                      customer_name: editSale.customer_name,
+                      notes: editSale.notes,
+                    })}>
+              Salva
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

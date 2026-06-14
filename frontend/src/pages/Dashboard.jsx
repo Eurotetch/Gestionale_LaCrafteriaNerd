@@ -203,9 +203,13 @@ export default function Dashboard() {
           ) : (
             <ul className="space-y-3">
               {stats.upcoming_events.map((ev) => (
-                <li key={ev.id} className="rounded-xl bg-muted/40 p-3">
-                  <div className="font-semibold">{ev.title}</div>
-                  <div className="text-xs text-muted-foreground">{ev.start?.slice(0, 16).replace("T", " ")}</div>
+                <li key={ev.id}>
+                  <button type="button"
+                          className="w-full text-left rounded-xl bg-muted/40 p-3 hover:bg-muted/70 transition-colors"
+                          onClick={() => navigate("/calendario", { state: { openDate: ev.start, eventId: ev.id } })}>
+                    <div className="font-semibold">{ev.title}</div>
+                    <div className="text-xs text-muted-foreground">{ev.start?.slice(0, 16).replace("T", " ")}</div>
+                  </button>
                 </li>
               ))}
             </ul>

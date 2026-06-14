@@ -787,7 +787,7 @@ async def patch_sale(sale_id: str, payload: dict, user: dict = Depends(require_p
     existing = await db.sales.find_one({"id": sale_id})
     if not existing:
         raise HTTPException(404, "Vendita non trovata")
-    allowed = {k: v for k, v in payload.items() if k in ("is_returned", "notes", "payment_method")}
+    allowed = {k: v for k, v in payload.items() if k in ("is_returned", "notes", "payment_method", "customer_name")}
     if not allowed:
         return {k: v for k, v in existing.items() if k != "_id"}
     allowed["updated_at"] = utcnow_iso()

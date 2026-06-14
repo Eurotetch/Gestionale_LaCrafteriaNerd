@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api, { formatApiError } from "@/lib/api";
 import { CALENDAR } from "@/constants/testIds";
@@ -52,9 +53,23 @@ export default function CalendarPage() {
   const [edit, setEdit] = useState(null);
   const [open, setOpen] = useState(false);
   const [dayView, setDayView] = useState(null); // Date | null
+  const [highlightId, setHighlightId] = useState(null);
+  const location = useLocation();
 
   useBackClose(!!dayView, () => setDayView(null));
   useBackClose(open, () => setOpen(false));
+
+  // Apertura agenda su un giorno/evento specifico, arrivando dalla Dashboard
+  useEffect(() => {
+    const st = location.state;
+    if (st?.openDate) {
+      const d = new Date(st.openDate.slice(0, 10) + "T00:00:00");
+      setCursor(new Date(d.getFullYear(), d.getMonth(), 1));
+      setDayView(d);
+      setHighlightId(st.eventId || null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: events = [] } = useQuery({
     queryKey: ["calendar"],
@@ -207,7 +222,8 @@ export default function CalendarPage() {
         <DayViewDialog
           date={dayView}
           events={dayView ? (eventsByDay[dateKey(dayView)] || []) : []}
-          onClose={() => setDayView(null)}
+          highlightId={highlightId}
+          onClose={() => { setDayView(null); setHighlightId(null); }}
           onAddEvent={(startValue) => openNew(startValue)}
           onEditEvent={(ev) => openEdit(ev)}
           can={can}
@@ -217,15 +233,23 @@ export default function CalendarPage() {
   );
 }
 
-function DayViewDialog({ date, events, onClose, onAddEvent, onEditEvent, can }) {
+function DayViewDialog({ date, events, highlightId, onClose, onAddEvent, onEditEvent, can }) {
   const scrollRef = useRef(null);
 
   useEffect(() => {
     if (date && scrollRef.current) {
-      const hourEl = scrollRef.current.querySelector('[data-hour="7"]');
+      let hourEl;
+      if (highlightId) {
+        const ev = events.find((e) => e.id === highlightId);
+        if (ev && (ev.start || "").length > 10) {
+          const h = parseInt(ev.start.slice(11, 13), 10) || 0;
+          hourEl = scrollRef.current.querySelector(`[data-hour="${h}"]`);
+        }
+      }
+      if (!hourEl) hourEl = scrollRef.current.querySelector('[data-hour="7"]');
       if (hourEl) hourEl.scrollIntoView({ block: "start" });
     }
-  }, [date]);
+  }, [date, highlightId, events]);
 
   if (!date) return null;
   const dStr = dateKey(date);
@@ -255,7 +279,7 @@ function DayViewDialog({ date, events, onClose, onAddEvent, onEditEvent, can }) 
                 const k = KINDS.find((x) => x.value === ev.kind) || KINDS[0];
                 return (
                   <button key={ev.id} onClick={() => onEditEvent(ev)}
-                          className={`block w-full text-left text-xs font-semibold px-2.5 py-1.5 rounded-xl ${k.color}`}>
+                          className={`block w-full text-left text-xs font-semibold px-2.5 py-1.5 rounded-xl ${k.color} ${ev.id === highlightId ? "ring-2 ring-primary" : ""}`}>
                     {ev.title} <span className="opacity-60 font-normal">· tutto il giorno</span>
                   </button>
                 );
@@ -277,7 +301,7 @@ function DayViewDialog({ date, events, onClose, onAddEvent, onEditEvent, can }) 
                   return (
                     <button key={ev.id}
                             onClick={(e) => { e.stopPropagation(); onEditEvent(ev); }}
-                            className={`block w-full text-left text-xs font-semibold px-2 py-1 rounded-lg ${k.color}`}>
+                            className={`block w-full text-left text-xs font-semibold px-2 py-1 rounded-lg ${k.color} ${ev.id === highlightId ? "ring-2 ring-primary" : ""}`}>
                       {(ev.start || "").slice(11, 16)} — {ev.title}
                     </button>
                   );
